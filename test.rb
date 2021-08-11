@@ -35,3 +35,13 @@ fsm.edge(s12, s13)
 
 fsm.graphviz.output(png: "fsm.png")
 puts fsm.table
+puts fsm.table[2..3, 0..5]
+fsm.table.save("fsm.csv")
+
+table = Lalrrb::Table.new
+table.add_column([1,2,3,4], heading: :numbers)
+table.add_column(['a','b','c','d'], heading: :letters)
+puts table
+puts table.get(:letters, 1)
+table[:letters,0] = 'e'
+puts table[:letters,0]

@@ -72,5 +72,19 @@ module Lalrrb
         rules: @rules.map { |_, rule| rule.to_h(expand: true) }
       }
     end
+
+    def self.syntax_diagram(*rules)
+      rules = @rules.keys if rules.nil? || rules.empty?
+      root = SVG::Root.new()
+      y = 0
+      rules.each do |rule|
+        root << SVG::Text.new("#{rule}:", 0, y, text_anchor: 'left', alignment_baseline: 'hanging', font_weight: 'bold')
+        root << g = @rules[rule].to_svg(expand: true).move(20, y + 10)
+        root.attributes[:width] = [root.attributes[:width].to_i, g.width + 40].max
+        y += g.height + 50
+      end
+      root.attributes[:height] = y
+      root
+    end
   end
 end

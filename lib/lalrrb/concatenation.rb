@@ -23,5 +23,18 @@ module Lalrrb
 
       self
     end
+
+    def to_svg
+      gs = @children.map(&:to_svg)
+      mg = SVG::Group.new(width: gs.map(&:width).sum + 40 * (gs.length - 1), height: gs.map(&:height).max)
+      x = 0
+      gs.each do |g|
+        mg << SVG::Line.new(x, 25, x + 40, 25) if x.positive?
+        x += 40 if x.positive?
+        mg << g.move(x, 0)
+        x += g.width
+      end
+      mg
+    end
   end
 end

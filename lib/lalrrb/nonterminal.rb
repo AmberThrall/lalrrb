@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative 'svg'
+
 module Lalrrb
   class Nonterminal
     attr_accessor :type, :children
@@ -39,7 +41,7 @@ module Lalrrb
       case other
       when Concatenation then other >> self
       when Nonterminal then Concatenation.new(self, other)
-      when Regexp, String then Concatenation(self, Terminal.new(other))
+      when Regexp, String then Concatenation.new(self, Terminal.new(other))
       else raise Error, "Invalid value on rhs of >>."
       end
     end
@@ -48,7 +50,7 @@ module Lalrrb
       case other
       when Alternation then other >> self
       when Nonterminal then Alternation.new(self, other)
-      when Regexp, String then Alternation(self, Terminal.new(other))
+      when Regexp, String then Alternation.new(self, Terminal.new(other))
       else raise Error, "Invalid value on rhs of /."
       end
     end

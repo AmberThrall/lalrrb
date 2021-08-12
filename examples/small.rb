@@ -11,3 +11,6 @@ end
 
 puts Small.to_s
 Small.syntax_diagram.save('small-syntax-diagram.svg')
+
+parser = Lalrrb::Parser.new(Small)
+parser.productions.each { |p| puts p }

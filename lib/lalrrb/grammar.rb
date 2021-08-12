@@ -47,9 +47,10 @@ module Lalrrb
       define_method("#{name}?".to_sym) { self.class.rules[name].optional }
     end
 
-    def self.start(new_start = nil)
-      return @start if new_start.nil?
-      @start = new_start.to_sym
+    def self.start(start = nil)
+      return @start if start.nil?
+
+      @start = start.to_sym
     end
 
     def self.done
@@ -80,7 +81,7 @@ module Lalrrb
       rules.each do |rule|
         root << SVG::Text.new("#{rule}:", 0, y, text_anchor: 'left', alignment_baseline: 'hanging', font_weight: 'bold')
         root << g = @rules[rule].to_svg(expand: true).move(20, y + 10)
-        root.attributes[:width] = [root.attributes[:width].to_i, g.width + 40].max
+        root.attributes[:width] = [root.attributes[:width].to_i , g.width + 40].max
         y += g.height + 50
       end
       root.attributes[:height] = y

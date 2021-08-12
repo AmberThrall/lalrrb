@@ -4,6 +4,8 @@ require_relative 'nonterminal'
 
 module Lalrrb
   class Repeat < Nonterminal
+    attr_accessor :min, :max
+
     def initialize(child, min = 0, max = Float::INFINITY)
       super(:repeat, child)
       @min = min

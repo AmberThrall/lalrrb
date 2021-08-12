@@ -25,3 +25,6 @@ p Expr.lexer.tokenize("52 * (3.14 + 13)").map(&:to_s)
 puts Expr.to_s
 pp Expr.to_h
 Expr.syntax_diagram().save('expr-syntax-diagram.svg')
+
+parser = Lalrrb::Parser.new(Expr)
+parser.productions.each { |p| puts p }

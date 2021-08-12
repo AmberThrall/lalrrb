@@ -14,7 +14,8 @@ module Lalrrb
     end
 
     def to_s(expand: false)
-      return "#{@name} = #{production.to_s}" if expand
+      return "#{@name} = #{production}" if expand
+
       @name.to_s
     end
 

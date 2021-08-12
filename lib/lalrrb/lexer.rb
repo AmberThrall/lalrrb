@@ -63,7 +63,7 @@ module Lalrrb
         @tokens[t.name][:on_match].call(t.value) unless @tokens[t.name][:on_match].nil?
       end
 
-      @tokenize
+      @tokenize << Token.new(:EOF, :EOF)
     end
 
     private

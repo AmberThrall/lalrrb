@@ -34,6 +34,7 @@ module Lalrrb
     end
 
     def token(name, match, state: nil, &block)
+      return if match.to_s.empty?
       block_closure = block.nil? ? nil : proc { |x| instance_exec(x, &block) }
       @tokens[name] = { match: match, state: state, on_match: block_closure }
     end
@@ -81,7 +82,7 @@ module Lalrrb
           end
         end
 
-        s.nil? ? nil : Token.new(name, s)
+        s.to_s.empty? ? nil : Token.new(name, s)
       end
 
       matches.delete_if { |x| x.nil? }

@@ -10,7 +10,7 @@ module Lalrrb
     end
 
     def to_s
-      "#{@name} (#{@value})"
+      "#{@name}"
     end
 
     def ==(other)

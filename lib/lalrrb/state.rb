@@ -8,17 +8,27 @@ module Lalrrb
       @items = items.flatten
     end
 
-    def <<(item)
-      @items << item unless item.nil? || @items.include?(item)
+    def add(item)
+      @items << item unless @items.include?(item)
       self
+    end
+
+    def kernel
+      k = State.new
+      @items.each { |i| k.add i if i.in_kernel? }
+      k
     end
 
     def [](index)
       @items[index]
     end
 
-    def length
-      @items.length
+    def empty?
+      @items.empty?
+    end
+
+    def size
+      @items.size
     end
 
     def include?(item)
@@ -55,20 +65,24 @@ module Lalrrb
       true
     end
 
-    def merge(other)
-      other.items.each do |i|
-        items << i unless include?(i)
-      end
-    end
-
     def ==(other)
-      return false if !other.is_a?(State) || other.length != length
+      return false unless other.is_a?(State)
+
+      @items.each do |i|
+        return false unless other.include?(i)
+      end
 
       other.items.each do |i|
         return false unless include?(i)
       end
 
       true
+    end
+
+    def merge(other)
+      other.items.each do |i|
+        @items << i unless include?(i)
+      end
     end
 
     def to_s(gap: 2, border: true)

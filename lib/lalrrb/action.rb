@@ -2,6 +2,8 @@
 
 module Lalrrb
   class Action
+    attr_reader :type, :arg
+
     def initialize(type, arg)
       @type = type
       @arg = arg
@@ -11,7 +13,7 @@ module Lalrrb
       case @type
       when :accept then "acc"
       when :shift then "s#{@arg}"
-      when :goto then "g#{@arg}"
+      when :goto then arg.to_s
       when :reduce then "r#{@arg}"
       when :error then "err"
       else "#{@type}#{@arg}"
@@ -30,8 +32,8 @@ module Lalrrb
       new(:goto, state)
     end
 
-    def self.reduce(state)
-      new(:reduce, state)
+    def self.reduce(production)
+      new(:reduce, production)
     end
 
     def self.error(msg)

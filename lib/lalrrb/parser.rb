@@ -5,6 +5,7 @@ require_relative 'item'
 require_relative 'table'
 require_relative 'action'
 require_relative 'item_set'
+require_relative 'parse_tree'
 
 module Lalrrb
   class Parser
@@ -41,7 +42,7 @@ module Lalrrb
       step_table = Table.new(['States', 'Tokens', 'Input', 'Action'], index_label: 'Step')
       step_table.add_group('Stack', 'States', 'Tokens')
 
-      stack = [{ symbol: :EOF, state: 0 }]
+      stack = [{ symbol: :EOF, state: 0, node: nil }]
       loop do
         state = stack.last[:state]
         action = @table[input.first.name, state]
@@ -61,20 +62,21 @@ module Lalrrb
 
         case action&.type
         when :shift
-          stack << { symbol: input.shift, state: action.arg }
+          symbol = input.shift
+          stack << { symbol: symbol, state: action.arg, node: ParseTree.new(symbol) }
         when :reduce
           p = @grammar[action.arg]
-          stack.pop(p.length)
+          popped = stack.pop(p.length)
           goto = @table[p.name, stack.last[:state]].arg
-          stack << { symbol: p.name, state: goto }
+          stack << { symbol: p.name, state: goto, node: ParseTree.new(p, popped.map { |x| x[:node] }) }
         when :accept
-          return step_table
+          return [stack.last[:node], step_table]
         else
-          return step_table
+          return [stack.last[:node], step_table]
         end
       end
 
-      step_table
+      [stack.last[:node], step_table]
     end
 
     private

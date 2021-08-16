@@ -2,18 +2,16 @@
 
 require_relative '../lib/lalrrb'
 
-class Small < Lalrrb::Grammar
-  start(:s)
-  rule(:s) { c >> c }
-  rule(:c) { ('x' >> c) / 'y' }
-  done
-end
+grammar = Lalrrb::BasicGrammar.new
+grammar.start = :S
+grammar.add_production(:S, :C, :C)
+grammar.add_production(:C, 'c', :C)
+grammar.add_production(:C, 'd')
 
-parser = Lalrrb::Parser.new(Small)
-parser.productions.each { |p| puts p }
+parser = Lalrrb::Parser.new(grammar)
+puts parser.grammar
 puts parser.nff_table
 parser.states.each_with_index { |s, i| puts "#{i}:"; puts s }
-parser.graphviz.output(png: 'small-parser.png')
 puts parser.table
 
-puts parser.parse("x=**y").to_s(uniform_widths: false)
+puts parser.parse("cdcd").to_s(uniform_widths: false)

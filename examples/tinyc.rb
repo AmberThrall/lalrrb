@@ -42,7 +42,7 @@ TEST_CODE = %(
 TinyC.syntax_diagram.save('tiny-c-syntax-diagram.svg')
 
 parser = Lalrrb::Parser.new(TinyC)
-parser.productions.each { |p| puts p }
+parser.grammar.productions.each { |p| puts p }
 puts parser.nff_table.to_s(uniform_widths: false)
 puts parser.table.to_s(uniform_widths: false)
 

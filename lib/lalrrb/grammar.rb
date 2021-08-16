@@ -3,6 +3,7 @@
 require_relative 'terminal'
 require_relative 'rule'
 require_relative 'lexer'
+require_relative 'basic_grammar'
 
 module Lalrrb
   class Grammar
@@ -59,6 +60,13 @@ module Lalrrb
       terminals.each do |t|
         lexer.token(t.match, t.match) unless tokens.include?(t.match)
       end
+    end
+
+    def self.to_basic
+      bg = BasicGrammar.new
+      bg.start = @start
+      @rules.each { |_, rule| bg.add_production(rule) }
+      bg
     end
 
     def self.to_s

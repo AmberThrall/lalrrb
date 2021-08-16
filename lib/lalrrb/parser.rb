@@ -4,20 +4,24 @@ require_relative 'production'
 require_relative 'item'
 require_relative 'table'
 require_relative 'action'
-require_relative 'state'
+require_relative 'item_set'
 
 module Lalrrb
   class Parser
-    attr_reader :productions, :states, :table, :nff_table
+    attr_reader :grammar, :states, :table, :nff_table
 
     def initialize(grammar)
-      @grammar = grammar
-      @productions = []
-      @productions << Production.new(unique_name(@grammar.start, :start), @grammar.start, start_production: true)
-      @grammar.rules.each { |name, rule| convert_rule(rule) }
-      @nonterminals = @productions.map(&:name).uniq
-      @terminals = @grammar.tokens.clone << :EOF
-      @symbols = [@nonterminals, @terminals].flatten
+      @grammar = grammar.is_a?(BasicGrammar) ? grammar : grammar.to_basic
+      @lexer = grammar.is_a?(BasicGrammar) ? Lexer.new : grammar.lexer
+
+      start_name = "#{@grammar.start}'"
+      start_name = "#{start_name}'" while @grammar.symbols.include? start_name
+
+      @grammar.add_production(start_name, @grammar.start)
+      @grammar.start = start_name
+
+      @grammar.terminals.each { |z| @lexer.token(z, z) if z.is_a?(String) }
+
       compute_nff_table
       construct_table
     end
@@ -33,7 +37,7 @@ module Lalrrb
     end
 
     def parse(text)
-      input = @grammar.lexer.tokenize(text)
+      input = @lexer.tokenize(text)
       step_table = Table.new(['States', 'Tokens', 'Input', 'Action'], index_label: 'Step')
       step_table.add_group('Stack', 'States', 'Tokens')
 
@@ -44,7 +48,7 @@ module Lalrrb
 
         action_msg = case action&.type
                      when :shift then "shift to state #{action.arg}"
-                     when :reduce then "reduce by #{@productions[action.arg]}"
+                     when :reduce then "reduce by #{@grammar[action.arg]}"
                      when nil then "no action available"
                      else action.type.to_s
                      end
@@ -59,7 +63,7 @@ module Lalrrb
         when :shift
           stack << { symbol: input.shift, state: action.arg }
         when :reduce
-          p = @productions[action.arg]
+          p = @grammar[action.arg]
           stack.pop(p.length)
           goto = @table[p.name, stack.last[:state]].arg
           stack << { symbol: p.name, state: goto }
@@ -79,19 +83,20 @@ module Lalrrb
       @nff_table = Table.new([:nullable, :first, :follow], index_label: "X")
 
       # 0. first[x] = [], nullable[x] = false, follow[x] = [] for all x
-      @symbols.each { |z| @nff_table.add_row([false, Set[], Set[]], label: z) }
+      @grammar.symbols.each { |z| @nff_table.add_row([false, Set[], Set[]], label: z) }
 
       # 1. first[z] = [z] for all terminals z
-      @terminals.each { |z| @nff_table[:first, z] = Set[z] }
+      @grammar.terminals.each { |z| @nff_table[:first, z] = Set[z] }
+      @nff_table.add_row([false, Set[:EOF], Set[]], label: :EOF)
 
       loop do
         old_table = @nff_table.clone
 
-        @productions.each do |p| # X -> Y1Y2...Yk
+        @grammar.productions.each do |p| # X -> Y1Y2...Yk
           nullable_list = p.rhs.map { |x| @nff_table[:nullable, x] }
 
           # 2. if Y1, Y2, ..., Yk nullable, then nullable[X] = true
-          if nullable_list.count(true) == p.length
+          if nullable_list.count(true) == nullable_list.length
             @nff_table[:nullable, p.name] = true
           end
 
@@ -115,25 +120,23 @@ module Lalrrb
           end
         end
 
-        break #unless @nff_table == old_table
+        break unless @nff_table == old_table
       end
     end
 
     def construct_table
-      @states = []
-      @states << closure(Item.new(@productions.first, 0, :EOF))
-      @edges = []
+      @states = [closure(Item.new(@grammar[@grammar.start], 0, :EOF))]
 
       # 1. Construct the states for LR(1)
       loop do
         modified = false
 
         @states.each do |state|
-          @symbols.each do |x|
-            new_state = goto(state, x)
-            next if new_state.empty? || @states.include?(new_state)
+          @grammar.symbols.each do |x|
+            j = goto(state, x)
+            next if j.empty? || @states.include?(j)
 
-            @states << new_state
+            @states << j
             modified = true
           end
         end
@@ -141,31 +144,35 @@ module Lalrrb
         break unless modified
       end
 
-      # 2. Construct the parsing table
-      @table = Table.new(@terminals.clone, index_label: :state)
-      @nonterminals[1..].each { |x| @table.add_column([], heading: x) }
-      @table.add_group(:action, @terminals)
-      @table.add_group(:goto, @table.ungrouped)\
+      # 2. Merge states with identical cores.
+
+      # 3. Construct the parsing table
+      @table = Table.new(index_label: :state)
+      @grammar.terminals.each { |x| @table.add_column([], heading: x) }
+      @table.add_column([], heading: :EOF)
+      @grammar.nonterminals.each { |x| @table.add_column([], heading: x) unless x == @grammar.start }
+      @table.add_group(:action, @grammar.terminals.to_a, :EOF)
+      @table.add_group(:goto, @table.ungrouped)
 
       @states.each_with_index do |state, index|
         @table.add_row([])
-        # 2a. ACTION[A, i] = goto j if goto(state, A) = state j
-        @nonterminals.each do |a|
+        # 3a. ACTION[A, i] = goto j if goto(state, A) = state j
+        @grammar.nonterminals.each do |a|
           j = @states.find_index(goto(state, a))
           @table[a, index] = Action.goto(j) unless j.nil?
         end
 
         state.items.each do |item|
-          # 2b. If item = (S' -> S ., $), then ACTION[$, index] = accept
-          if item.production.start_production? && item.at_end? && item.lookahead == :EOF
+          # 3b. If item = (S' -> S ., $), then ACTION[$, index] = accept
+          if item.production.name == @grammar.start && item.at_end? && item.lookahead == :EOF
             @table[:EOF, index] = Action.accept
-          # 2c. If item = (A -> alpha . a beta, b) with a a terminal, then ACTION[a, index] = shift j where goto(state, a) = state j
-          elsif @terminals.include? item.next
+          # 3c. If item = (A -> alpha . a beta, b) with a a terminal, then ACTION[a, index] = shift j where goto(state, a) = state j
+          elsif @grammar.terminal? item.next
             j = @states.find_index(goto(state, item.next))
             @table[item.next, index] = Action.shift(j) unless j.nil?
-          # 2d. If item = (A -> alpha ., a), A != S', then ACTION[a, index] = reduce A -> alpha
-          elsif item.at_end? && item.production.name != @productions.first.name
-            r = @productions.find_index(item.production)
+          # 3d. If item = (A -> alpha ., a), A != S', then ACTION[a, index] = reduce A -> alpha
+          elsif item.at_end? && item.production.name != @grammar.start
+            r = @grammar.productions.find_index(item.production)
             @table[item.lookahead, index] = Action.reduce(r) unless r.nil?
           end
         end
@@ -185,94 +192,34 @@ module Lalrrb
       set
     end
 
-    def closure(items)
-      state = items.is_a?(State) ? items.clone : State.new(items)
+    def closure(set)
+      set = set.is_a?(ItemSet) ? set.clone : ItemSet.new(*Array(set))
 
       loop do
-        old_size = state.size
+        old_size = set.size
 
-        state.items.each do |item|
-          @productions.filter { |p| p.name == item.next }.each do |p|
+        set.items.each do |item|
+          Array(@grammar[item.next]).each do |p|
             first(item.production.rhs[item.position + 1..], item.lookahead).each do |b|
-              state.add Item.new(p, 0, b)
+              set.add Item.new(p, 0, b)
             end
           end
         end
 
-        break if state.size == old_size
+        break if set.size == old_size
       end
 
-      state
+      set
     end
 
-    def goto(items, symbol)
-      items = items.items if items.is_a?(State)
+    def goto(set, symbol)
+      set = set.is_a?(ItemSet) ? set.clone : ItemSet.new(*Array(set))
 
-      j = State.new
-      items.filter { |i| i.next == symbol }.each do |i|
-        j.add i.shift
+      j = ItemSet.new
+      set.items.filter { |i| i.next == symbol }.each do |i|
+        j.add i.shift unless i.at_end?
       end
       closure(j)
-    end
-
-    def convert_rule(rule)
-      p = rule.production
-
-      if p.is_a?(Alternation)
-        p.children.each { |c| @productions << Production.new(rule.name, simplify(rule.name, c)) }
-      else
-        @productions << Production.new(rule.name, simplify(rule.name, p))
-      end
-    end
-
-    def simplify(rule, nonterminal)
-      case nonterminal
-      when Alternation
-        name = unique_name(rule, :alternation)
-        nonterminal.children.each { |c| @productions << Production.new(name, simplify(name, c)) }
-        name
-      when Concatenation then nonterminal.children.map { |c| simplify(rule, c) }
-      when Optional
-        name = unique_name(rule, :optional)
-        @productions << Production.new(name, simplify(name, nonterminal.children.first))
-        @productions << Production.new(name)
-        name
-      when Repeat
-        basename = unique_name(rule, :repeat)
-        name = "#{basename}_impl".to_sym
-        impl = simplify(name, nonterminal.children.first)
-        name = impl if Array(impl).length == 1
-        @productions << Production.new(name, impl) unless Array(impl).length == 1
-
-        case nonterminal.max
-        when nonterminal.min then [name] * nonterminal.min
-        when Float::INFINITY
-          name_inf = "#{basename}_inf".to_sym
-          @productions << Production.new(name_inf, name, name_inf)
-          @productions << Production.new(name_inf)
-          [[name] * nonterminal.min, name_inf].flatten
-        else
-          name_repeat = "#{basename}_repeat".to_sym
-          (0..nonterminal.max - nonterminal.min).each do |i|
-            @productions << Production.new(name_repeat, [[name] * i].flatten)
-          end
-          [[name] * nonterminal.min, name_repeat].flatten
-        end
-      when Rule then nonterminal.name
-      when Terminal then nonterminal.name.nil? ? nonterminal.match : nonterminal.name
-      end
-    end
-
-    def unique_name(rule, type)
-      @new_production_counts ||= {}
-      @new_production_counts[type] ||= {}
-      @new_production_counts[type][rule] ||= 0
-      name = nil
-      while name.nil? || @productions.map(&:name).include?(name) || @grammar.rules.include?(name)
-        name = "#{rule}_#{type}_#{@new_production_counts[type][rule]}".to_sym
-        @new_production_counts[type][rule] += 1
-      end
-      name
     end
   end
 end

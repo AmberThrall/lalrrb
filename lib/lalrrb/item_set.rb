@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
 module Lalrrb
-  class State
+  class ItemSet
     attr_reader :items
 
     def initialize(*items)
-      @items = items.flatten
+      @items = items.map{ |i| i.is_a?(Item) ? i : i.to_a }.flatten
     end
 
     def add(item)
-      @items << item unless @items.include?(item)
+      @items << item unless include?(item)
       self
     end
 
@@ -35,54 +35,27 @@ module Lalrrb
       @items.include?(item)
     end
 
-    def mostly_equal?(other)
-      return false unless other.is_a?(State)
+    def to_a
+      @items
+    end
 
-      other.items.each do |ji|
-        match = false
-        @items.each do |i|
-          if i.production == ji.production && i.position == ji.position
-            match = true
-            break
-          end
-        end
-
-        return false unless match
-      end
-
-      @items.each do |i|
-        match = false
-        other.items.each do |ji|
-          if i.production == ji.production && i.position == ji.position
-            match = true
-            break
-          end
-        end
-
-        return false unless match
-      end
-
-      true
+    def core
+      c = ItemSet.new
+      @items.each { |i| c.add Item.new(i.production, i.position) }
+      c
     end
 
     def ==(other)
-      return false unless other.is_a?(State)
+      return false unless other.is_a?(ItemSet)
+      return false unless size == other.size
 
-      @items.each do |i|
-        return false unless other.include?(i)
-      end
-
-      other.items.each do |i|
-        return false unless include?(i)
-      end
+      @items.each { |i| return false unless other.include? i }
 
       true
     end
 
     def merge(other)
-      other.items.each do |i|
-        @items << i unless include?(i)
-      end
+      other.items.each { |i| add i }
     end
 
     def to_s(gap: 2, border: true)

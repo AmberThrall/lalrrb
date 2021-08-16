@@ -2,6 +2,7 @@
 
 require_relative 'lalrrb/fsm'
 require_relative 'lalrrb/table'
+require_relative 'lalrrb/basic_grammar'
 require_relative 'lalrrb/grammar'
 require_relative "lalrrb/version"
 require_relative 'lalrrb/parser'

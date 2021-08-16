@@ -315,8 +315,10 @@ module Lalrrb
     end
 
     def cjust(string, width)
-      offset = width / 2 - string.to_s.length / 2
-      "#{' ' * offset.to_i}#{string}#{' ' * (width - offset.to_i - string.to_s.length)}"
+      return ' ' * width if string.to_s.empty?
+
+      offset = [width / 2 - string.to_s.length / 2, 0].max
+      "#{' ' * offset.to_i}#{string}#{' ' * [width - offset.to_i - string.to_s.length, 0].max}"
     end
   end
 end

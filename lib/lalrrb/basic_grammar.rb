@@ -11,9 +11,12 @@ module Lalrrb
       @productions = []
       @terminals = Set[]
       @nonterminals = Set[]
+      @first = {}
+      @recompute_first = true
     end
 
     def add_production(arg0, *args)
+      @recompute_first = true
       return convert_rule(arg0) if arg0.is_a?(Rule)
 
       name = arg0
@@ -22,7 +25,7 @@ module Lalrrb
       @nonterminals.add name
       @terminals.delete name
       rhs.each do |x|
-        @terminals.add x unless @nonterminals.include?(x)
+        @terminals.add x unless @nonterminals.include?(x) || x.empty?
       end
     end
 
@@ -60,7 +63,64 @@ module Lalrrb
       Set[@terminals, @nonterminals].flatten
     end
 
+    def first(*args)
+      compute_first if @recompute_first
+      return @first if args.empty?
+
+      stack = Array(args).flatten
+      stack.delete_if { |x| !symbol?(x) }
+
+      nullable = true
+      set = Set[]
+      stack.each do |x|
+        set.merge @first[x]
+        unless @first[x].include?('')
+          nullable = false
+          break
+        end
+      end
+      set.delete '' unless nullable
+
+      set
+    end
+
     private
+
+    def compute_first
+      @first = {}
+
+      # 0. first[x] = [] for all x
+      symbols.each { |z| @first[z] = Set[] }
+
+      # 1. first[z] = [z] for all terminals z
+      @terminals.each { |z| @first[z].add z }
+
+      loop do
+        old = @first.clone
+
+        # 2. For each X -> Y1Y2...Yk, do
+        @productions.each do |p|
+          nullable_list = p.rhs.map { |x| @first[x].include? '' }
+          first_false = nullable_list.find_index(false)
+          first_false ||= p.length
+
+          # 2a. if Y1, Y2, ..., Yk are nullable, then nullable[X] = true
+          if first_false.nil?
+            @first[p.name].add ''
+            first_false = p.length
+          end
+
+          # 2b. first[X] = first[X] U first[Y1] U ... U first[Yj] where j is such that nullable[Yi] = true for i=1..j-1
+          Array(p.rhs[0..first_false]).each do |y|
+            @first[p.name].merge @first[y]
+          end
+        end
+
+        break if @first == old
+      end
+
+      @recompute_first = false
+    end
 
     def convert_rule(rule)
       p = rule.production

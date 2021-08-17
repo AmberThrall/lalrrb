@@ -1,10 +1,14 @@
 # frozen_string_literal: true
 
+require_relative 'basic_grammar'
+require_relative 'item'
+
 module Lalrrb
   class ItemSet
     attr_reader :items
 
-    def initialize(*items)
+    def initialize(grammar, *items)
+      @grammar = grammar
       @items = items.map{ |i| i.is_a?(Item) ? i : i.to_a }.flatten
     end
 
@@ -21,6 +25,38 @@ module Lalrrb
 
     def [](index)
       @items[index]
+    end
+
+    def closure
+      set = clone
+
+      loop do
+        old_size = set.size
+
+        set.items.each do |item|
+          Array(@grammar[item.next]).each do |p|
+            @grammar.first(item.production.rhs[item.position + 1..], item.lookahead).each do |b|
+              set.add Item.new(p, 0, b)
+            end
+          end
+        end
+
+        break if set.size == old_size
+      end
+
+      set
+    end
+
+    def goto(symbol)
+      set = ItemSet.new(@grammar)
+      @items.filter { |i| i.next == symbol }.each do |i|
+        set.add i.shift
+      end
+      set.closure
+    end
+
+    def clear
+      @items.clear
     end
 
     def empty?
@@ -40,7 +76,7 @@ module Lalrrb
     end
 
     def core
-      c = ItemSet.new
+      c = ItemSet.new(@grammar)
       @items.each { |i| c.add Item.new(i.production, i.position) }
       c
     end
@@ -59,6 +95,8 @@ module Lalrrb
     end
 
     def to_s(gap: 2, border: true)
+      return "[]" if empty?
+      
       ps = []
       ts = []
       @items.each do |i|

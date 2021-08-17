@@ -10,7 +10,7 @@ grammar.add_production(:C, 'd')
 
 parser = Lalrrb::Parser.new(grammar)
 puts parser.grammar
-puts parser.nff_table
+pp parser.grammar.first
 parser.states.each_with_index { |s, i| puts "#{i}:"; puts s }
 puts parser.table
 

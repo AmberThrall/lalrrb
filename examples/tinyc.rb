@@ -8,8 +8,8 @@ class TinyC < Lalrrb::Grammar
   token(:ELSE, 'else')
   token(:WHILE, 'while')
   token(:DO, 'do')
-  token(:ID, /[A-Za-z_][A-Za-z_0-9]*/)
-  token(:UINT, /0|[1-9][0-9]*/)
+  token(:ID, /[a-z]/)
+  token(:UINT, /[0-9]+/)
   token(:WSP, /[ \t\r\n]/) { toss }
 
   start(:program)
@@ -28,22 +28,15 @@ class TinyC < Lalrrb::Grammar
   rule(:test) { sum / (sum >> '<' >> sum) }
   rule(:sum) { term / (sum >> '+' >> term) / (sum >> '-' >> term) }
   rule(:term) { ID / UINT / paren_expr }
-  done
 end
-
-TEST_CODE = %(
-  {
-    i = 7;
-    if (i < 5) x = 1;
-    if (i < 10) y = 2;
-  }
-)
 
 TinyC.syntax_diagram.save('tiny-c-syntax-diagram.svg')
 
 parser = Lalrrb::Parser.new(TinyC)
-parser.grammar.productions.each { |p| puts p }
-puts parser.nff_table.to_s(uniform_widths: false)
+puts parser.grammar
+pp parser.grammar.first
 puts parser.table.to_s(uniform_widths: false)
 
-puts parser.parse(TEST_CODE).to_s(uniform_widths: false)
+tree, log = parser.parse("{ i=1; while (i<100) i=i+i; }")
+puts log.to_s(uniform_widths: false)
+tree.graphviz.output(png: "tiny-c.png")

@@ -45,12 +45,11 @@ module Lalrrb
     def graphviz(g = nil, parent = nil, index = 0)
       g = GraphViz.new(:G, type: :digraph) if g.nil?
 
-      label = case @data
-              when Production then @data.name
-              when Token then @data.value
-              else @data.to_s
-              end
-      shape = leaf? ? :circle : :rectangle
+      label, shape = case @data
+                     when Production then [@data.name, :rectangle]
+                     when Token then [@data.value, :circle]
+                     else [@data.to_s, :circle]
+                     end
       node = g.add_nodes(parent.nil? ? index.to_s : "#{parent.id}.#{index}", label: label, shape: shape)
       g.add_edges(parent, node) unless parent.nil?
 

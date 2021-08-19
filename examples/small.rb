@@ -12,8 +12,8 @@ parser = Lalrrb::Parser.new(grammar)
 puts parser.grammar
 pp parser.grammar.first
 parser.states.each_with_index { |s, i| puts "#{i}:"; puts s }
-puts parser.table
+parser.table.pretty_print
 
 tree, log = parser.parse("cdcd")
-puts log.to_s(uniform_widths: false)
+log.pretty_print
 tree.graphviz.output(png: "small.png")

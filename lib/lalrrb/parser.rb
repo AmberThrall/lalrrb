@@ -38,8 +38,9 @@ module Lalrrb
 
     def parse(text)
       input = @lexer.tokenize(text)
-      step_table = Table.new(['States', 'Tokens', 'Input', 'Action'], index_label: 'Step')
-      step_table.add_group('Stack', 'States', 'Tokens')
+      step_table = Table.new(index_label: :Step)
+      [:States, :Tokens, :Input, :Action].each { |s| step_table.add_column(s) }
+      step_table.group_add(:Stack, :States, :Tokens)
 
       stack = [{ symbol: :EOF, state: 0, node: nil }]
       loop do
@@ -49,18 +50,15 @@ module Lalrrb
         action_msg = case action&.type
                      when :shift then "shift to state #{action.arg}"
                      when :reduce then "reduce by #{@grammar[action.arg]}"
-                     when nil
-                       reductions = @grammar.terminals.filter { |z| @table[z, state]&.type == :reduce }
-                       action = @table[reductions.first,state] unless reductions.empty?
-                       action&.type.nil? ? "no action available" : "reduce by #{@grammar[action.arg]}"
+                     when nil then "no action available"
                      else action.type.to_s
                      end
-        step_table.add_row([
-          stack.map { |s| s[:state]}.join(' '),
-          stack.map { |s| s[:symbol]}.join(' '),
-          input.join(' '),
-          action_msg
-        ], label: (step_table.nrows + 1).to_s)
+        step_table.add_row((step_table.nrows + 1).to_s, **{
+          States: stack.map { |s| s[:state]}.join(' '),
+          Tokens: stack.map { |s| s[:symbol]}.join(' '),
+          Input: input.join(' '),
+          Action: action_msg
+        })
 
         case action&.type
         when :shift
@@ -134,14 +132,14 @@ module Lalrrb
       @states.delete_if { |s| s.empty? }
 
       # 3. Construct the parsing table
-      @table = Table.new(index_label: :state)
-      @grammar.terminals.each { |x| @table.add_column([], heading: x) }
-      @grammar.nonterminals.each { |x| @table.add_column([], heading: x) unless x == @grammar.start }
-      @table.add_group(:action, @grammar.terminals.to_a)
-      @table.add_group(:goto, @grammar.nonterminals.to_a)
+      @table = Table.new(index_label: :State)
+      @grammar.terminals.each { |x| @table.add_column(x) }
+      @grammar.nonterminals.each { |x| @table.add_column(x) unless x == @grammar.start }
+      @table.group_add(:Action, *@grammar.terminals.to_a)
+      @table.group_add(:Goto, *@grammar.nonterminals.to_a)
 
       @states.each_with_index do |state, index|
-        @table.add_row([])
+        @table.add_row
         # 3a. GOTO[A, i] = goto j if goto(state, A) = state j
         @grammar.nonterminals.each do |a|
           j = lookup_state(state.goto(a))
@@ -159,7 +157,10 @@ module Lalrrb
           # 3d. If item = (A -> alpha ., a), A != S', then ACTION[a, index] = reduce A -> alpha
           elsif item.at_end? && item.production.name != @grammar.start
             r = @grammar.productions.find_index(item.production)
-            @table[item.lookahead, index] = Action.reduce(r) unless r.nil?
+            next if r.nil?
+
+            @table[item.lookahead, index] = Action.reduce(r)
+            @grammar.terminals.each { |z| @table[z, index] = Action.reduce(r) if @table[z, index].nil? }
           end
         end
       end

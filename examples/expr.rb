@@ -20,7 +20,7 @@ Expr.syntax_diagram().save('expr-syntax-diagram.svg')
 
 parser = Lalrrb::Parser.new(Expr)
 parser.grammar.productions.each { |p| puts p }
-puts parser.table
+parser.table.pretty_print
 tree, log = parser.parse("26 + (3.14 * 0xbeef)")
-puts log.to_s(uniform_widths: false)
+log.pretty_print
 tree.graphviz.output(png: "expr.png")

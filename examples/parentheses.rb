@@ -12,10 +12,9 @@ grammar.add_production(:S, '[', :S, ']')
 
 parser = Lalrrb::Parser.new(grammar)
 puts parser.grammar
-puts parser.nff_table
 parser.states.each_with_index { |s, i| puts "#{i}:"; puts s }
-puts parser.table
+parser.table.pretty_print
 
 tree, log = parser.parse("([[[()()[][]]]([])])")
-puts log.to_s(uniform_widths: false)
+log.pretty_print
 tree.graphviz.output(png: "parentheses.png")

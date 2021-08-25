@@ -2,13 +2,15 @@
 
 require_relative 'production'
 require_relative 'table'
+require_relative 'lexer'
 
 module Lalrrb
   class BasicGrammar
-    attr_accessor :start
+    attr_accessor :start, :lexer
     attr_reader :productions, :terminals, :nonterminals
 
-    def initialize
+    def initialize(lexer: nil)
+      @lexer = lexer.is_a?(Lexer) ? lexer : Lexer.new
       @productions = []
       @terminals = Set[]
       @nonterminals = Set[]
@@ -25,8 +27,10 @@ module Lalrrb
       @productions << Production.new(name, rhs, generated: generated)
       @nonterminals.add name
       @terminals.delete name
+      @lexer.delete_token name
       rhs.each do |x|
         @terminals.add x unless @nonterminals.include?(x) || x.to_s.empty?
+        @lexer.token(x, x) unless @nonterminals.include?(x) || x.to_s.empty?
       end
     end
 
@@ -135,39 +139,6 @@ module Lalrrb
         break unless modified
       end
 
-      # @first = {}
-      #
-      # # 0. first[x] = [] for all x
-      # symbols.each { |z| @first[z] = Set[] }
-      #
-      # # 1. first[z] = [z] for all terminals z
-      # @terminals.each { |z| @first[z].add z }
-      #
-      # loop do
-      #   old = @first.clone
-      #
-      #   # 2. For each X -> Y1Y2...Yk, do
-      #   @productions.each do |p|
-      #     if p.length.zero?
-      #       @first[p.name].add ''
-      #       next
-      #     end
-      #
-      #     first_false = p.rhs.map { |x| @first[x].include? '' }.find_index(false)
-      #     first_false ||= p.length
-      #
-      #     # 2a. if Y1, Y2, ..., Yk are nullable, then nullable[X] = true
-      #     @first[p.name].add '' if first_false == p.length
-      #
-      #     # 2b. first[X] = first[X] U first[Y1] U ... U first[Yj] where j is such that nullable[Yi] = true for i=1..j-1
-      #     Array(p.rhs[0..first_false]).each do |y|
-      #       @first[p.name].merge @first[y]
-      #     end
-      #   end
-      #
-      #   break if @first == old
-      # end
-
       @recompute_nff = false
     end
 
@@ -220,11 +191,13 @@ module Lalrrb
     end
 
     def unique_name(basename)
-      i = 0
-      name = basename.to_sym
-      while @terminals.include?(name) || @nonterminals.include?(name)
-        i += 1
-        name = "#{basename}#{i}".to_sym
+      @unique_name_count ||= {}
+      @unique_name_count[basename] ||= 0
+      name = "#{basename}#{@unique_name_count[basename]}".to_sym
+      @unique_name_count[basename] += 1
+      while symbols.include?(name)
+        name = "#{basename}#{@unique_name_count[basename]}".to_sym
+        @unique_name_count[basename] += 1
       end
       name
     end

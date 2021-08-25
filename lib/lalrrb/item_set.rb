@@ -9,7 +9,8 @@ module Lalrrb
 
     def initialize(grammar, *items)
       @grammar = grammar
-      @items = items.map{ |i| i.is_a?(Item) ? i : i.to_a }.flatten
+      @items = []
+      items.map { |i| i.is_a?(Item) ? i : i.to_a }.flatten.each { |i| add i }
     end
 
     def add(item)
@@ -23,11 +24,12 @@ module Lalrrb
 
     def closure
       set = self.clone
+      last_pos = 0
 
       loop do
         old_size = set.size
 
-        set.items.each do |item|
+        set.items[last_pos..].each do |item|
           first_set = @grammar.first(*item.production.rhs[item.position + 1..], item.lookahead)
 
           Array(@grammar[item.next]).each do |p|
@@ -37,6 +39,7 @@ module Lalrrb
           end
         end
 
+        last_pos = old_size
         break if set.size == old_size
       end
 

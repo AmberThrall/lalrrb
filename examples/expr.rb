@@ -13,7 +13,6 @@ class Expr < Lalrrb::Grammar
   rule(:product) { (product >> '*' >> term) / (product >> '/' >> term) / term }
   rule(:term) { ('(' >> expr >> ')') / number }
   rule(:number) { OCTAL / HEX / FLOAT }
-  done
 end
 
 Expr.syntax_diagram().save('expr-syntax-diagram.svg')

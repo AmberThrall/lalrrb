@@ -13,6 +13,12 @@ module Lalrrb
     end
 
     def self.tokens
+      # Convert terminals into tokens
+      terminals = @rules.map { |_, rule| rule.search(:terminal, expand: true) }.flatten
+      terminals.each do |t|
+        lexer.token(t.match, t.match)
+      end
+
       lexer.tokens
     end
 
@@ -54,16 +60,15 @@ module Lalrrb
       @start = start.to_sym
     end
 
-    def self.done
+    def self.to_basic
       # Convert terminals into tokens
       terminals = @rules.map { |_, rule| rule.search(:terminal, expand: true) }.flatten
       terminals.each do |t|
-        lexer.token(t.match, t.match) unless tokens.include?(t.match)
+        lexer.token(t.match, t.match)
       end
-    end
 
-    def self.to_basic
-      bg = BasicGrammar.new
+      # Convert to basic grammar
+      bg = BasicGrammar.new(lexer: lexer)
       bg.start = @start
       @rules.each { |_, rule| bg.add_production(rule) }
       bg

@@ -34,9 +34,14 @@ module Lalrrb
     end
 
     def token(name, match, state: nil, &block)
-      return if match.to_s.empty?
+      return if match.to_s.empty? || @tokens.include?(name)
+
       block_closure = block.nil? ? nil : proc { |x| instance_exec(x, &block) }
       @tokens[name] = { match: match, state: state, on_match: block_closure }
+    end
+
+    def delete_token(name)
+      @tokens.delete(name)
     end
 
     def set_state(new_state)
@@ -86,7 +91,7 @@ module Lalrrb
       end
 
       matches.delete_if { |x| x.nil? }
-      raise StandardError, "Unexpected character '#{text[0]}'" if matches.empty?
+      raise StandardError, "Couldn't match any tokens with '#{text.length > 10 ? text[..10] + '...' : text}'" if matches.empty?
 
       matches.sort { |a,b| b.value.length <=> a.value.length }.first
     end

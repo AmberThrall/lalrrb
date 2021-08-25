@@ -34,7 +34,7 @@ TinyC.syntax_diagram.save('tiny-c-syntax-diagram.svg')
 
 parser = Lalrrb::Parser.new(TinyC)
 puts parser.grammar
-pp parser.grammar.first
+parser.grammar.nff.pretty_print
 parser.table.pretty_print
 
 tree, log = parser.parse("{ i=1; while (i<100) i=i+i; }")

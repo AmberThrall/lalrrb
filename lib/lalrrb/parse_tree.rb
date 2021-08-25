@@ -91,6 +91,7 @@ module Lalrrb
 
     def [](term)
       matches = search(term, recursive: false, include_self: false)
+      return nil if matches.empty?
       return matches.first if matches.length == 1
 
       matches

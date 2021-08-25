@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'production'
+require_relative 'table'
 
 module Lalrrb
   class BasicGrammar
@@ -12,11 +13,11 @@ module Lalrrb
       @terminals = Set[]
       @nonterminals = Set[]
       @first = {}
-      @recompute_first = true
+      @recompute_nff = true
     end
 
     def add_production(arg0, *args, generated: false)
-      @recompute_first = true
+      @recompute_nff = true
       return convert_rule(arg0) if arg0.is_a?(Rule)
 
       name = arg0
@@ -63,60 +64,111 @@ module Lalrrb
       Set[@terminals, @nonterminals].flatten
     end
 
+    def nff
+      compute_nff if @recompute_nff
+      @nff
+    end
+
     def first(*args)
-      compute_first if @recompute_first
-      return @first if args.empty?
+      compute_nff if @recompute_nff
 
       stack = args.flatten
 
       set = Set[]
       stack.each do |x|
         set.add x unless symbol?(x)
-        set.merge @first[x] if symbol?(x)
-        break unless symbol?(x) && @first[x].include?('')
+        set.merge @nff[:first, x] if symbol?(x)
+        break unless symbol?(x) && @nff[:nullable, x]
       end
-      set.delete ''
 
       set
     end
 
     private
 
-    def compute_first
-      @first = {}
+    def compute_nff
+      @nff = Table.new(index_label: :symbol)
+      symbols.each { |x| @nff.add_row(x, nullable: false, first: Set[], follow: Set[]) }
 
-      # 0. first[x] = [] for all x
-      symbols.each { |z| @first[z] = Set[] }
-
-      # 1. first[z] = [z] for all terminals z
-      @terminals.each { |z| @first[z].add z }
+      # 1. first[z] <- {z} for each terminal z
+      @terminals.each { |z| @nff[:first, z].add z }
 
       loop do
-        old = @first.clone
+        modified = false
 
-        # 2. For each X -> Y1Y2...Yk, do
+        # 2. For each production X -> Y1Y2...Yk
         @productions.each do |p|
-          if p.length.zero?
-            @first[p.name].add ''
-            next
+          if p.null? && !@nff[:nullable, p.name]
+            @nff[:nullable, p.name] = true
+            modified = true
           end
 
-          first_false = p.rhs.map { |x| @first[x].include? '' }.find_index(false)
-          first_false ||= p.length
+          # 3. For each i from 1 to k
+          p.length.times do |i|
+            nullable = p.rhs.map { |y| @nff[:nullable, y] }
 
-          # 2a. if Y1, Y2, ..., Yk are nullable, then nullable[X] = true
-          @first[p.name].add '' if first_false == p.length
+            # 4. If all Yi are nullable, then nullable[X] <- true
+            if nullable.count(true) == p.length && !@nff[:nullable, p.name]
+              @nff[:nullable, p.name] = true
+              modified = true
+            end
 
-          # 2b. first[X] = first[X] U first[Y1] U ... U first[Yj] where j is such that nullable[Yi] = true for i=1..j-1
-          Array(p.rhs[0..first_false]).each do |y|
-            @first[p.name].merge @first[y]
+            # 5. If Y1...Yi-1 are nullable, then first[X] <- first[X] U first[Yi]
+            if i == 0 || nullable[..i-1].count(true) == i - 1
+              old = @nff[:first, p.name].clone
+              @nff[:first, p.name].merge @nff[:first, p[i]]
+              modified = true unless @nff[:first, p.name] == old
+            end
+
+            # 6. For each j from i + 1 to k
+            (i + 1..p.length - 1).each do |j|
+              # 7. If Yi+1...Yj-1 are nullable, then follow[Yi] <- follow[Yi] U first[Yj]
+              if j - i - 1 == 0 || nullable[i+1..j-1].count(true) == j - i - 1
+                old = @nff[:follow, p[i]]
+                @nff[:follow, p[i]] = @nff[:follow, p[i]].merge @nff[:first, p[j]]
+                modified = true unless @nff[:follow, p[i]] == old
+              end
+            end
           end
         end
 
-        break if @first == old
+        break unless modified
       end
 
-      @recompute_first = false
+      # @first = {}
+      #
+      # # 0. first[x] = [] for all x
+      # symbols.each { |z| @first[z] = Set[] }
+      #
+      # # 1. first[z] = [z] for all terminals z
+      # @terminals.each { |z| @first[z].add z }
+      #
+      # loop do
+      #   old = @first.clone
+      #
+      #   # 2. For each X -> Y1Y2...Yk, do
+      #   @productions.each do |p|
+      #     if p.length.zero?
+      #       @first[p.name].add ''
+      #       next
+      #     end
+      #
+      #     first_false = p.rhs.map { |x| @first[x].include? '' }.find_index(false)
+      #     first_false ||= p.length
+      #
+      #     # 2a. if Y1, Y2, ..., Yk are nullable, then nullable[X] = true
+      #     @first[p.name].add '' if first_false == p.length
+      #
+      #     # 2b. first[X] = first[X] U first[Y1] U ... U first[Yj] where j is such that nullable[Yi] = true for i=1..j-1
+      #     Array(p.rhs[0..first_false]).each do |y|
+      #       @first[p.name].merge @first[y]
+      #     end
+      #   end
+      #
+      #   break if @first == old
+      # end
+
+      @recompute_nff = false
     end
 
     def convert_rule(rule)

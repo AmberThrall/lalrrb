@@ -90,7 +90,10 @@ module Lalrrb
     end
 
     def [](term)
-      search(term, recursive: false, include_self: false)
+      matches = search(term, recursive: false, include_self: false)
+      return matches.first if matches.length == 1
+
+      matches
     end
 
     def <<(other)
@@ -122,8 +125,6 @@ module Lalrrb
       @children.each { |c| matches.concat Array(c.search(*terms, recursive: true, include_self: false)) } if recursive
       matches = matches.uniq
       matches.delete(nil)
-
-      return matches.first if matches.length == 1
 
       matches
     end

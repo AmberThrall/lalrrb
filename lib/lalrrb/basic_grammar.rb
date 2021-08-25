@@ -67,19 +67,15 @@ module Lalrrb
       compute_first if @recompute_first
       return @first if args.empty?
 
-      stack = Array(args).flatten
-      stack.delete_if { |x| !symbol?(x) }
+      stack = args.flatten
 
-      nullable = true
       set = Set[]
       stack.each do |x|
-        set.merge @first[x]
-        unless @first[x].include?('')
-          nullable = false
-          break
-        end
+        set.add x unless symbol?(x)
+        set.merge @first[x] if symbol?(x)
+        break unless symbol?(x) && @first[x].include?('')
       end
-      set.delete '' unless nullable
+      set.delete ''
 
       set
     end
@@ -100,15 +96,16 @@ module Lalrrb
 
         # 2. For each X -> Y1Y2...Yk, do
         @productions.each do |p|
-          nullable_list = p.rhs.map { |x| @first[x].include? '' }
-          first_false = nullable_list.find_index(false)
+          if p.length.zero?
+            @first[p.name].add ''
+            next
+          end
+
+          first_false = p.rhs.map { |x| @first[x].include? '' }.find_index(false)
           first_false ||= p.length
 
           # 2a. if Y1, Y2, ..., Yk are nullable, then nullable[X] = true
-          if first_false.nil?
-            @first[p.name].add ''
-            first_false = p.length
-          end
+          @first[p.name].add '' if first_false == p.length
 
           # 2b. first[X] = first[X] U first[Y1] U ... U first[Yj] where j is such that nullable[Yi] = true for i=1..j-1
           Array(p.rhs[0..first_false]).each do |y|

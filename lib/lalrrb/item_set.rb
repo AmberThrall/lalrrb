@@ -17,25 +17,21 @@ module Lalrrb
       self
     end
 
-    def kernel
-      k = State.new
-      @items.each { |i| k.add i if i.in_kernel? }
-      k
-    end
-
     def [](index)
       @items[index]
     end
 
     def closure
-      set = clone
+      set = self.clone
 
       loop do
         old_size = set.size
 
         set.items.each do |item|
+          first_set = @grammar.first(*item.production.rhs[item.position + 1..], item.lookahead)
+
           Array(@grammar[item.next]).each do |p|
-            @grammar.first(item.production.rhs[item.position + 1..], item.lookahead).each do |b|
+            first_set.each do |b|
               set.add Item.new(p, 0, b)
             end
           end
@@ -96,7 +92,7 @@ module Lalrrb
 
     def to_s(gap: 2, border: true)
       return "[]" if empty?
-      
+
       ps = []
       ts = []
       @items.each do |i|

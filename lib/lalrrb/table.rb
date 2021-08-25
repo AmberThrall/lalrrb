@@ -89,12 +89,12 @@ class Table
     columns = Array(column).flatten.map do |col|
       case col
       when Integer then self.columns[col]
-      when String, Symbol then col
       when Range
         case col.min
         when Integer then self.columns[col]
         when String, Symbol then col.to_a
         end
+      else col
       end
     end.flatten
     columns.delete_if { |c| !column?(c) }
@@ -103,12 +103,12 @@ class Table
     rows = Array(row).flatten.map do |r|
       case r
       when Integer then r
-      when String, Symbol then @row_labels.find_index(r)
       when Range
         case r.min
         when Integer then r.to_a
         when String, Symbol then r.map { |r2| @row_labels.find_index(r2) }
         end
+      else @row_labels.find_index(r)
       end
     end.flatten
     rows.delete(nil)
@@ -131,12 +131,12 @@ class Table
     columns = Array(column).flatten.map do |col|
       case col
       when Integer then self.columns[col]
-      when String, Symbol then col
       when Range
         case col.min
         when Integer then self.columns[col]
         when String, Symbol then col.to_a
         end
+      else col
       end
     end.flatten
     columns.delete(nil)
@@ -145,10 +145,6 @@ class Table
     rows = Array(row).flatten.map do |r|
       case r
       when Integer then r
-      when String, Symbol
-         f = @row_labels.find_index(r)
-         add_row(label: r) if f.nil?
-         f.nil? ? nrows - 1 : f
       when Range
         case r.min
         when Integer then r.to_a
@@ -159,7 +155,11 @@ class Table
             f.nil? ? nrows - 1 : f
           end
         end
-      end
+      else
+         f = @row_labels.find_index(r)
+         add_row(label: r) if f.nil?
+         f.nil? ? nrows - 1 : f
+       end
     end.flatten
     rows.delete(nil)
     rows.each { |r| add_row while r >= nrows }
@@ -243,8 +243,8 @@ class Table
     return if ncols == 0
 
     string_table = Table.new
-    @table.each do |k,v|
-      v[:data].each_with_index { |c,i| string_table[k,i] = c.to_s }
+    @table.keys.each do |k|
+      nrows.times { |i| string_table[k,i] = get(k,i).to_s }
     end
 
     index_width = [@options[:index_label].to_s.length, @row_labels.map { |l| l.to_s.length }].flatten.max

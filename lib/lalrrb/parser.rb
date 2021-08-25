@@ -36,7 +36,7 @@ module Lalrrb
       g
     end
 
-    def parse(text)
+    def parse(text, raise_on_error: true)
       input = @lexer.tokenize(text)
       step_table = Table.new(index_label: :Step)
       [:States, :Tokens, :Input, :Action].each { |s| step_table.add_column(s) }
@@ -70,10 +70,14 @@ module Lalrrb
           goto = @table[p.name, stack.last[:state]].arg
           stack << { symbol: p.name, state: goto, node: ParseTree.new(p, popped.map { |x| x[:node] }) }
         when :accept
-          return [stack.last[:node], step_table]
+          return [stack.last[:node].simplify, step_table]
         when nil
           matches = @grammar.terminals.filter { |z| !@table[z, state].nil? }
-          raise StandardError, "Expected #{matches.join(', ')} but encountered #{input.first.name} in state #{state}"
+          err = "Expected #{matches.join(', ')} but encountered #{input.first.name} in state #{state}"
+          raise StandardError, err if raise_on_error
+          warn "Error: #{err}"
+
+          return [stack.last[:node], step_table]
         else
           return [stack.last[:node], step_table]
         end

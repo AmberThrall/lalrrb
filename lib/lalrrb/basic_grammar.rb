@@ -15,23 +15,23 @@ module Lalrrb
       @recompute_first = true
     end
 
-    def add_production(arg0, *args)
+    def add_production(arg0, *args, generated: false)
       @recompute_first = true
       return convert_rule(arg0) if arg0.is_a?(Rule)
 
       name = arg0
       rhs = args.flatten
-      @productions << Production.new(name, rhs)
+      @productions << Production.new(name, rhs, generated: generated)
       @nonterminals.add name
       @terminals.delete name
       rhs.each do |x|
-        @terminals.add x unless @nonterminals.include?(x) || x.empty?
+        @terminals.add x unless @nonterminals.include?(x) || x.to_s.empty?
       end
     end
 
     def [](name)
       return [] if name.nil?
-      return @productions[name] unless name.is_a?(String) || name.is_a?(Symbol)
+      return @productions[name] unless name.is_a?(String) || name.is_a?(Symbol) || name.is_a?(Regexp)
 
       list = @productions.filter { |p| p.name == name }
       return list.first if list.length == 1
@@ -136,32 +136,32 @@ module Lalrrb
       case nonterminal
       when Alternation
         name = unique_name("#{rule}_alternation")
-        nonterminal.children.each { |c| add_production(name, simplify(name,c)) }
+        nonterminal.children.each { |c| add_production(name, simplify(name,c), generated: true) }
         name
       when Concatenation then nonterminal.children.map { |c| simplify(rule, c) }
       when Optional
         name = unique_name("#{rule}_optional")
-        add_production(name, simplify(name, nonterminal.children.first))
-        add_production(name)
+        add_production(name, simplify(name, nonterminal.children.first), generated: true)
+        add_production(name, generated: true)
         name
       when Repeat
         basename = unique_name("#{rule}_repeat")
         name = "#{basename}_impl".to_sym
         impl = simplify(name, nonterminal.children.first)
         name = impl if Array(impl).length == 1
-        add_production(name, impl) unless Array(impl).length == 1
+        add_production(name, impl, generated: true) unless Array(impl).length == 1
 
         case nonterminal.max
         when nonterminal.min then [name] * nonterminal.min
         when Float::INFINITY
           name_inf = "#{basename}_inf".to_sym
-          add_production(name_inf, name, name_inf)
-          add_production(name_inf)
+          add_production(name_inf, name, name_inf, generated: true)
+          add_production(name_inf, generated: true)
           [[name] * nonterminal.min, name_inf].flatten
         else
           name_repeat = "#{basename}_repeat".to_sym
           (0..nonterminal.max - nonterminal.min).each do |i|
-            add_production(name_repeat, [[name] * i].flatten)
+            add_production(name_repeat, [[name] * i].flatten, generated: true)
           end
           [[name] * nonterminal.min, name_repeat].flatten
         end

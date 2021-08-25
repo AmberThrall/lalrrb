@@ -86,7 +86,7 @@ module Lalrrb
       end
 
       matches.delete_if { |x| x.nil? }
-      return nil if matches.empty?
+      raise StandardError, "Unexpected character '#{text[0]}'" if matches.empty?
 
       matches.sort { |a,b| b.value.length <=> a.value.length }.first
     end

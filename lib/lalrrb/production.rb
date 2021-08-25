@@ -4,11 +4,11 @@ module Lalrrb
   class Production
     attr_reader :name, :rhs
 
-    def initialize(name, *rhs, start_production: false)
+    def initialize(name, *rhs, generated: false)
       @name = name
       @rhs = rhs.flatten
       @rhs.delete_if { |r| r.to_s.empty? }
-      @start_production = start_production
+      @generated = generated
     end
 
     def length
@@ -31,8 +31,8 @@ module Lalrrb
       @rhs.empty?
     end
 
-    def start_production?
-      @start_production
+    def generated?
+      @generated
     end
 
     def to_s(position: nil)

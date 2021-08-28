@@ -410,13 +410,16 @@ module Lalrrb
     end
 
     def convert(*args)
+      backup = @branches.clone
       @branches = [{rhs: [], children: []}]
 
       args.each_with_index do |arg, i|
         @branches.length.times { |i| convert_step(arg, i) }
       end
 
-      @branches
+      ret = @branches.clone
+      @branches = backup
+      ret
     end
 
     def convert_step(arg, branch)
@@ -438,36 +441,23 @@ module Lalrrb
         @branches[branch][:children] << @branches.length - 1
         convert_step(arg.children.first, @branches.length - 1)
       when Repeat
-        impl_name = case arg.children.first
-                    when Rule then arg.children.first.name
-                    when Terminal then arg.children.first.name.nil? ? arg.children.first.match : arg.children.first.name
-                    else
-                      impl_name = unique_name(:RI)
-                      backup = @branches.clone
-                      add_production(impl_name, arg.children.first, generated: true)
-                      @branches = backup
-                      impl_name
-                    end
-
         case arg.max
-        when arg.min then @branches[branch][:rhs].concat [impl_name] * arg.min
+        when arg.min then arg.min.times { convert_step(arg.children.first, branch) }
         when Float::INFINITY
           name = unique_name(:R)
-          backup = @branches.clone
-          add_production(name, impl_name, name, generated: true)
-          add_production(name, impl_name, generated: true)
-          @branches = backup
+          add_production(name, arg.children.first, name, generated: true)
+          add_production(name, arg.children.first, generated: true)
 
-          @branches[branch][:rhs].concat [impl_name] * arg.min
+          arg.min.times { convert_step(arg.children.first, branch) }
           @branches << { rhs: @branches[branch][:rhs].clone, children: [] }
           @branches[branch][:children] << @branches.length - 1
           @branches[@branches.length - 1][:rhs] << name
         else
-          @branches[branch][:rhs].concat [impl_name] * arg.min
+          arg.min.times { convert_step(arg.children.first, branch) }
           (1..arg.max - arg.min).each do |i|
             @branches << { rhs: @branches[branch][:rhs].clone, children: [] }
             @branches[branch][:children] << @branches.length - 1
-            @branches[@branches.length - 1][:rhs].concat [impl_name] * i
+            i.times { convert_step(arg.children.first, @branches.length - 1) }
           end
         end
       when Rule then @branches[branch][:rhs] << arg.name

@@ -2,7 +2,8 @@
 
 module Lalrrb
   class Production
-    attr_reader :name, :rhs
+    attr_accessor :rhs
+    attr_reader :name
 
     def initialize(name, *rhs, generated: false)
       @name = name

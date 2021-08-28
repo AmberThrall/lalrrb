@@ -32,14 +32,18 @@ module Lalrrb
       @rules
     end
 
-    def self.token(name, match, state: nil, &block)
+    def self.token(name, match, *flags, &block)
       name = name.to_sym
 
       raise Error, "Token '#{name}' should be all capitalized." unless name.to_s.upcase == name.to_s
       raise Error, "Token '#{name}' already defined." if const_defined?(name)
 
-      lexer.token(name, match, state: state, &block)
+      lexer.token(name, match, *flags, &block)
       const_set(name, Terminal.new(match, name: name))
+    end
+
+    def self.ignore(match, *flags)
+      lexer.ignore(match, *flags)
     end
 
     def self.rule(name, &block)

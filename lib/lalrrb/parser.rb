@@ -12,40 +12,43 @@ module Lalrrb
     attr_reader :grammar, :states, :table, :lexer
 
     def initialize(grammar)
-      @grammar = grammar.is_a?(BasicGrammar) ? grammar : grammar.to_basic
-      @lexer = grammar.lexer
+      @grammar = grammar.is_a?(BasicGrammar) ? grammar.clone : grammar.to_basic
+      @grammar.merge_duplicate_rules
 
       start_name = "#{@grammar.start}'"
       start_name = "#{start_name}'" while @grammar.symbols.include? start_name
-
-      @grammar.add_production(start_name, @grammar.start, :EOF)
+      @grammar.add_production(start_name, @grammar.start, :EOF, generated: true)
       @grammar.start = start_name
 
-      @grammar.terminals.each { |z| @lexer.token(z, z) if z.is_a?(String) }
+      @lexer = @grammar.lexer
+      @grammar.terminals.each { |z| @lexer.token(z, z) }
 
       construct_table
     end
 
-    def graphviz
-      g = GraphViz.new(:G, type: :digraph, rankdir: :LR)
-
-      @states.each_with_index { |state, index| g.add_nodes(index.to_s, label: state.to_s(border: false).gsub("\n", "\\n"), shape: :rectangle) }
-
-      @edges.each { |edge| g.add_edges(edge[:from].to_s, edge[:to].to_s, label: edge[:condition]) }
-
-      g
-    end
-
-    def parse(text, raise_on_error: true)
-      input = @lexer.tokenize(text)
+    def parse(text, raise_on_error: true, return_steps: false)
       step_table = Table.new(index_label: :Step)
-      [:States, :Tokens, :Input, :Action].each { |s| step_table.add_column(s) }
+      [:States, :Tokens, :Ahead, :Action].each { |s| step_table.add_column(s) }
       step_table.group_add(:Stack, :States, :Tokens)
 
-      stack = [{ symbol: :EOF, state: 0, node: nil }]
+      stack = [{ symbol: nil, state: 0, node: nil }]
+      @lexer.start(text)
+      ahead = nil
       loop do
         state = stack.last[:state]
-        action = @table[input.first.name, state]
+        action = nil
+        if ahead.nil?
+          @lexer.next.each do |t|
+            action = @table[t.name, state]
+            next if action.nil?
+
+            @lexer.accept(t)
+            ahead = t
+            break
+          end
+        else
+          action = @table[ahead.name, state]
+        end
 
         action_msg = case action&.type
                      when :shift then "shift to state #{action.arg}"
@@ -53,37 +56,38 @@ module Lalrrb
                      when nil then "no action available"
                      else action.type.to_s
                      end
-        step_table.add_row((step_table.nrows + 1).to_s, **{
-          States: stack.map { |s| s[:state]}.join(' '),
-          Tokens: stack.map { |s| s[:symbol]}.join(' '),
-          Input: input.join(' '),
-          Action: action_msg
-        })
+        if return_steps
+          step_table.add_row((step_table.nrows + 1).to_s, **{
+            States: stack.map { |s| s[:state]}.join(' '),
+            Tokens: stack.filter { |s| !s.nil? }.map { |s| s[:symbol]}.join(' '),
+            Ahead: ahead,
+            Action: action_msg
+          })
+        end
 
         case action&.type
         when :shift
-          symbol = input.shift
-          stack << { symbol: symbol, state: action.arg, node: ParseTree.new(symbol) }
+          stack << { symbol: ahead, state: action.arg, node: ParseTree.new(ahead) }
+          ahead = nil
         when :reduce
           p = @grammar[action.arg]
           popped = stack.pop(p.length)
           goto = @table[p.name, stack.last[:state]].arg
           stack << { symbol: p.name, state: goto, node: ParseTree.new(p, popped.map { |x| x[:node] }) }
-        when :accept
-          return [stack.last[:node].simplify, step_table]
+        when :accept then break
         when nil
           matches = @grammar.terminals.filter { |z| !@table[z, state].nil? }
-          err = "Expected #{matches.join(', ')} but encountered #{input.first.name} in state #{state}"
+          err = "Expected #{matches.join(', ')} but encountered '#{ahead}' in state #{state}"
           raise StandardError, err if raise_on_error
           warn "Error: #{err}"
 
-          return [stack.last[:node], step_table]
-        else
-          return [stack.last[:node], step_table]
+          break
+        else break
         end
       end
 
-      [stack.last[:node], step_table]
+      return [stack.last[:node].root.simplify, step_table] if return_steps
+      stack.last[:node].root.simplify
     end
 
     private

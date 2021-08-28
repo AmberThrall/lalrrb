@@ -3,9 +3,9 @@ require_relative '../lib/lalrrb'
 
 class Json
   class Grammar < Lalrrb::Grammar
-    token(:NUMBER, /-?\d+(\.\d+)?([eE][+-]?\d+)?/)
-    token(:STRING, /"(?:\\["\\\/bfnrt]|\\u[0-9A-Fa-f]{4}|[^"\\])*"/)
-    token(:WS, /[\u0020\u000A\u000D\u0009]/) { toss }
+    token(:NUMBER, /-?\d+(\.\d+)?([eE][+-]?\d+)?/) { |value| value.to_i.to_f == value.to_f ? value.to_i : value.to_f }
+    token(:STRING, /"(?:\\["\\\/bfnrt]|\\u[0-9A-Fa-f]{4}|[^"\\])*"/) { |value| value[1..-2] }
+    ignore(/[\u0020\u000A\u000D\u0009]/)
 
     start(:json)
     rule(:json) { value }
@@ -23,8 +23,8 @@ class Json
 
   def parse(text, **opts)
     opts[:symbolize_keys] ||= false
-    root, log = @parser.parse(text)
-    log.save(opts[:output_log]) unless opts[:output_log].to_s.empty?
+    root, steps = @parser.parse(text, return_steps: true)
+    log.save(opts[:output_steps]) unless opts[:output_steps].to_s.empty?
     root.graphviz.output(png: opts[:output_graphviz]) unless opts[:output_graphviz].to_s.empty?
     root.pretty_print if opts[:print_tree]
     parse_value(root[:value], opts)
@@ -36,8 +36,8 @@ class Json
     case node[0].name
     when :object then parse_object(node[0], opts)
     when :array then parse_array(node[0], opts)
-    when :STRING then parse_string(node[0])
-    when :NUMBER then parse_number(node[0])
+    when :STRING then node[0].value
+    when :NUMBER then node[0].value
     when 'true' then true
     when 'false' then false
     when 'null' then nil
@@ -51,7 +51,7 @@ class Json
 
     members = Array(members[:member])
     members.each do |member|
-      key = parse_string(member[:STRING])
+      key = member[:STRING].value
       value = parse_value(member[:value], opts)
       hash[opts[:symbolize_keys] ? key.to_sym : key] = value
     end
@@ -70,18 +70,6 @@ class Json
     end
 
     array
-  end
-
-  def parse_string(node)
-    node.value[1..-2]
-  end
-
-  def parse_number(node)
-    as_f = node.value.to_f
-    as_i = node.value.to_i
-    return as_i if as_i.to_f == as_f
-
-    as_f
   end
 end
 
@@ -115,4 +103,4 @@ TEST_JSON = %(
 )
 
 json = Json.new
-pp json.parse(TEST_JSON, symbolize_keys: true)
+pp json.parse(TEST_JSON, symbolize_keys: true, output_graphviz: "json.png")

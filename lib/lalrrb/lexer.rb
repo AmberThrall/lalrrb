@@ -2,20 +2,21 @@
 
 module Lalrrb
   class Token
-    attr_accessor :name, :value
+    attr_accessor :name, :value, :position
 
-    def initialize(name, value)
+    def initialize(name, value, position)
       @name = name
       @value = value
+      @position = position
     end
 
     def to_s
-      "#{@name}"
+      @name.to_s
     end
 
     def ==(other)
       case other
-      when Token then @name == other.name && @value == other.value
+      when Token then @name == other.name && @value == other.value && @position == other.position
       when String then @value == other
       when Symbol then @name == other
       else false
@@ -26,74 +27,84 @@ module Lalrrb
   class Lexer
     def initialize
       @tokens = {}
-      @state = nil
     end
 
     def tokens
       @tokens.keys
     end
 
-    def token(name, match, state: nil, &block)
+    def token(name, match, *flags, &block)
       return if match.to_s.empty? || @tokens.include?(name)
 
       block_closure = block.nil? ? nil : proc { |x| instance_exec(x, &block) }
-      @tokens[name] = { match: match, state: state, on_match: block_closure }
+      @tokens[name] = { match: match, flags: convert_flags(name, flags), on_match: block_closure }
+    end
+
+    def ignore(match, *flags)
+      return if match.to_s.empty?
+
+      name = "ignore#{@tokens.length}".to_sym
+      flags = convert_flags(:ignore, flags)
+      flags[:ignore] = true
+      @tokens[name] = { match: match, flags: flags, on_match: nil }
     end
 
     def delete_token(name)
       @tokens.delete(name)
     end
 
-    def set_state(new_state)
-      @state = new_state
+    def start(text)
+      @text = text
+      @position = 0
     end
 
-    def clear_state
-      @state = nil
+    def next
+      matches = get_matches(@position)
+      raise StandardError, "Couldn't match any tokens with string '#{@text[@position..].length > 10 ? @text[@position..@position+10] + '...' : @text[@position..]}'" if matches.empty?
+
+      matches.sort { |a,b| b.value.length <=> a.value.length }
     end
 
-    def toss
-      @tokenize = @tokenize[..-2]
-    end
-
-    def tokenize(text)
-      @tokenize = []
-      pos = 0
-
-      while pos < text.length
-        t = next_token(text[pos..])
-        break if t.nil?
-
-        @tokenize << t
-        pos += t.value.length
-        @tokens[t.name][:on_match].call(t.value) unless @tokens[t.name][:on_match].nil?
-      end
-
-      @tokenize << Token.new(:EOF, :EOF)
+    def accept(token)
+      @position = token.position + token.value.length
+      token.value = @tokens[token.name][:on_match].call(token.value) unless @tokens[token.name][:on_match].nil?
     end
 
     private
 
-    def next_token(text)
-      matches = @tokens.map do |name, data|
-        next unless data[:state] == @state
+    def get_matches(pos)
+      return [Token.new(:EOF, :EOF, @text.length)] if pos == @text.length
 
+      matches = @tokens.map do |name, data|
         s = nil
         Array(data[:match]).each do |m|
-          m = text.match(m) if m.is_a?(Regexp)
-          if text[0..m.to_s.length - 1] == m.to_s
-            s = text[0..m.to_s.length - 1]
+          m = @text[pos..].match(m) if m.is_a?(Regexp)
+          if (data[:flags][:insensitive] && @text[pos..pos + m.to_s.length - 1].downcase == m.to_s.downcase) ||
+              (!data[:flags][:insensitive] && @text[pos..pos + m.to_s.length - 1] == m.to_s)
+            s = @text[pos..pos + m.to_s.length - 1]
             break
           end
         end
 
-        s.to_s.empty? ? nil : Token.new(name, s)
+        s.to_s.empty? ? nil : (data[:flags][:ignore] ? get_matches(pos + s.length) : Token.new(name, s, pos))
+      end.flatten
+      matches.delete(nil)
+      matches
+    end
+
+    def convert_flags(name, flags)
+      _flags = { insensitive: false, ignore: false }
+
+      flags.each do |flag|
+        case flag
+        when :i, :insensitive then _flags[:insensitive] = true
+        when :s, :sensitive then _flags[:insensitive] = false
+        when :ignore then _flags[:ignore] = true
+        else raise StandardError, "Invalid flag '#{flag}' in token '#{name}'"
+        end
       end
 
-      matches.delete_if { |x| x.nil? }
-      raise StandardError, "Couldn't match any tokens with '#{text.length > 10 ? text[..10] + '...' : text}'" if matches.empty?
-
-      matches.sort { |a,b| b.value.length <=> a.value.length }.first
+      _flags
     end
   end
 end

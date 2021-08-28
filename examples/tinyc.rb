@@ -9,8 +9,8 @@ class TinyC < Lalrrb::Grammar
   token(:WHILE, 'while')
   token(:DO, 'do')
   token(:ID, /[a-z]/)
-  token(:UINT, /[0-9]+/)
-  token(:WSP, /[ \t\r\n]/) { toss }
+  token(:UINT, /[0-9]+/) { |value| value.to_i }
+  ignore(/[ \t\r\n]/)
 
   start(:program)
   rule(:program) { statement }
@@ -37,6 +37,6 @@ puts parser.grammar
 parser.grammar.nff.pretty_print
 parser.table.pretty_print
 
-tree, log = parser.parse("{ i=1; while (i<100) i=i+i; }")
-log.pretty_print
-tree.graphviz.output(png: "tiny-c.png")
+root, steps = parser.parse("{ i=1; while (i<100) i=i+i; }", return_steps: true)
+steps.pretty_print
+root.graphviz.output(png: "tiny-c.png")

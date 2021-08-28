@@ -141,6 +141,10 @@ module Lalrrb
     end
 
     def simplify
+      if @data.is_a?(Production) && @data.generated? && root? && @children.length == 1
+        return @children.first.subtree.simplify
+      end
+
       loop do
         new_children = @children.map { |c| c.simplify }.flatten
         break if new_children == @children
@@ -148,7 +152,7 @@ module Lalrrb
         @children = new_children
       end
 
-      return @children if @data.is_a?(Production) && @data.generated?
+      return @children if @data.is_a?(Production) && @data.generated? && !root?
 
       self
     end

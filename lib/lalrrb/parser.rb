@@ -9,11 +9,11 @@ require_relative 'parse_tree'
 
 module Lalrrb
   class Parser
-    attr_reader :grammar, :states, :table, :lexer
+    attr_reader :grammar, :table, :lexer
 
     def initialize(grammar)
       @grammar = grammar.is_a?(BasicGrammar) ? grammar.clone : grammar.to_basic
-      @grammar.merge_duplicate_rules
+      @grammar.merge_duplicate_rules(generated_only: true)
 
       start_name = "#{@grammar.start}'"
       start_name = "#{start_name}'" while @grammar.symbols.include? start_name

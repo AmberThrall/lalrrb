@@ -10,7 +10,7 @@ module Lalrrb
     end
 
     def to_s
-      @children.map(&:to_s).map { |s| s.include?('/') ? "(#{s})" : s }.join(' ')
+      @children.map { |s| s.is_a?(Alternation) ? "(#{s})" : s.to_s }.join(' ')
     end
 
     def >>(other)

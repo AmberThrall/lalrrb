@@ -1,25 +1,55 @@
 require_relative '../lib/lalrrb'
+require 'bigdecimal'
 
-class Expr < Lalrrb::Grammar
-  token(:FLOAT, /[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/)
-  token(:OCTAL, /0o[0-7]+/)
-  token(:HEX, /0x[0-9A-Fa-f]+/)
-  ignore(/[ \t]+/)
-  ignore(/\r?\n/)
+Lalrrb.create(:Expr, %(
+  %token(DIGIT, %x30-39)
+  %ignore(" " / "\\t")
+  %start(expr)
 
-  start(:expr)
-  rule(:expr) { sum }
-  rule(:sum) { (sum >> ('+' / '-') >> product) / product }
-  rule(:product) { (product >> ('*' / '/') >> term) / term }
-  rule(:term) { ('(' >> expr >> ')') / number }
-  rule(:number) { OCTAL / HEX / FLOAT }
+  expr = sum
+  sum = sum ("+" / "-") product / product
+  product = product ("*" / "/") power / power
+  power = power "^" term / term
+  term = "(" expr ")" / number
+  number = ["-"] digits [fraction] [exponent]
+  fraction = "." digits
+  exponent = ("e" / "E") ["-"] digits
+  digits = 1*DIGIT
+))
+
+def compute(node)
+  case node.name
+  when :expr then compute(node[:sum])
+  when :sum, :product, :power
+    return compute(node[0]) if node.degree == 1
+
+    lhs = compute(node[0])
+    rhs = compute(node[2])
+    case node[1].value
+    when "+" then lhs + rhs
+    when "-" then lhs - rhs
+    when "*" then lhs * rhs
+    when "/" then lhs / rhs
+    when "^" then lhs ** rhs
+    end
+  when :term then compute(node[:expr].nil? ? node[:number] : node[:expr])
+  when :number then BigDecimal(node.value)
+  end
 end
 
-Expr.syntax_diagram().save('expr-syntax-diagram.svg')
+puts Expr.grammar
 
-parser = Lalrrb::Parser.new(Expr)
-parser.grammar.productions.each { |p| puts p }
-parser.table.pretty_print
-root, steps = parser.parse("26 + (3.14 * 0xbeef)", return_steps: true)
-steps.pretty_print
-root.graphviz.output(png: "expr.png")
+Expr.grammar.syntax_diagram.save('expr-syntax-diagram.svg')
+
+loop do
+  begin
+    print "> "
+    prompt = gets.chomp
+    break if prompt.downcase == "quit"
+
+    root = Expr.parse(prompt)
+    puts compute(root).to_s('F')
+  rescue StandardError => e
+    warn "Syntax Error: #{e.message}"
+  end
+end

@@ -1,10 +1,9 @@
 require_relative '../lib/lalrrb'
 
-
 class Json
   class Grammar < Lalrrb::Grammar
     token(:NUMBER, /-?\d+(\.\d+)?([eE][+-]?\d+)?/) { |value| value.to_i.to_f == value.to_f ? value.to_i : value.to_f }
-    token(:STRING, /"(?:\\["\\\/bfnrt]|\\u[0-9A-Fa-f]{4}|[^"\\])*"/) { |value| value[1..-2] }
+    token(:STRING, /"(?:\\["\\\/bfnrt]|\\u[0-9A-Fa-f]{4}|[^"\\])*"/) { |value| value.undump }
     ignore(/[\u0020\u000A\u000D\u0009]/)
 
     start(:json)
@@ -77,7 +76,7 @@ TEST_JSON = %(
   {"widget": {
       "debug": true,
       "window": {
-          "title": "Sample Konfabulator Widget",
+          "title": "Sample K\\u00f6nfabulator Widget",
           "name": "main_window",
           "width": 500,
           "height": 500

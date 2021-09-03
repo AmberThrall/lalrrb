@@ -25,7 +25,6 @@ module Lalrrb
 
       name = arg0
       ps = convert(*args).map do |rhs|
-        rhs = rhs[:rhs]
         p = Production.new(name, rhs, generated: generated)
         next if @productions.include?(p)
 
@@ -82,54 +81,64 @@ module Lalrrb
       end
     end
 
-    def merge_duplicate_rules
-      # Get the set of duplicates
-      duplicates = {}
-      @nonterminals.each do |x|
-        skip = false
-        duplicates.each { |k,v| skip = true if v.include?(x) }
-        break if skip
+    def merge_duplicate_rules(generated_only: false)
+      loop do
+        # Get the set of duplicates
+        duplicates = {}
+        @nonterminals.each do |x|
+          px = Array(self[x])
+          duplicates[x] = []
 
-        productions_x = @productions.filter { |p| p.name == x }
-        duplicates[x] = []
+          next unless duplicates.filter { |_,v| v.include?(x) }.empty?
+          next if generated_only && px.filter { |p| p.generated? }.length != px.length
 
-        @nonterminals.filter { |y| y != x }.each do |y|
-          productions_y = @productions.filter { |p| p.name == y }
-          next if productions_x.length != productions_y.length
+          @nonterminals.each do |y|
+            next if y == x
 
-          duplicates[x] << y
-          productions_x.each do |px|
-            matched_production = nil
-            productions_y.each do |py|
-              next if px.length != py.length
+            py = Array(self[y])
+            next unless px.length == py.length
+            next if generated_only && py.filter { |p| p.generated? }.length != py.length
 
-              is_match = true
-              px.length.times do |i|
-                unless px[i] == py[i] || (px[i] == x && py[i] == y)
-                  is_match = false
+            duplicates[x] << y
+            px.each do |p|
+              matched_production = nil
+
+              py.each do |q|
+                next unless p.length == q.length
+
+                match = true
+                p.length.times do |i|
+                  unless p[i] == q[i] || (p[i] == x && q[i] == y)
+                    match = false
+                    break
+                  end
+                end
+
+                if match
+                  matched_production = q
                   break
                 end
               end
 
-              if is_match
-                matched_production = py
+              if matched_production.nil?
+                duplicates[x].delete(y)
                 break
               end
-            end
 
-            if matched_production.nil?
-              duplicates[x].delete(y)
-              break
+              py.delete(matched_production)
             end
           end
         end
-      end
+        duplicates.delete_if { |x,v| v.empty? }
+        break if duplicates.empty?
 
-      # Remove duplicates keeping the first one.
-      duplicates.each do |x,v|
-        v.each do |y|
-          replace_all(y, x) # Replace all instances of y with x
-          delete_rule(y)
+        # Remove duplicates keeping the first one.
+        duplicates.each do |x,v|
+          v.each do |y|
+            duplicates.delete(y)
+            replace_all(y, x) # Replace all instances of y with x
+            delete_rule(y)
+          end
         end
       end
     end
@@ -410,59 +419,88 @@ module Lalrrb
     end
 
     def convert(*args)
-      backup = @branches.clone
-      @branches = [{rhs: [], children: []}]
+      data = { branches: [{ rhs: [], children: [] }], repeats: {}, repeat_impls: {} }
 
-      args.each_with_index do |arg, i|
-        @branches.length.times { |i| convert_step(arg, i) }
+      args.each do |arg|
+        convert2(arg, 0, data)
       end
 
-      ret = @branches.clone
-      @branches = backup
-      ret
+      data[:branches].each_with_index do |b,i|
+        next if b.nil?
+
+        data[:branches][i + 1..].each_with_index do |b2,j|
+          next if b2.nil?
+
+          data[:branches][j] = nil if b[:rhs] == b2[:rhs]
+        end
+      end
+      data[:branches].delete(nil)
+
+      data[:branches].map { |branch| branch[:rhs] }
     end
 
-    def convert_step(arg, branch)
+    def convert2(arg, cur_branch, data)
+      data[:branches][cur_branch][:children].each { |c| convert2(arg, c, data) }
+
       case arg
       when Alternation
-        arg.children[1..].each do |c|
-          @branches << { rhs: @branches[branch][:rhs].clone, children: [] }
-          @branches[branch][:children] << @branches.length - 1
-          convert_step(c, @branches.length - 1)
-        end
-        convert_step(arg.children.first, branch)
-      when Concatenation
-        arg.children.each do |c|
-          @branches[branch][:children].each { |b| convert_step(c, b) }
-          convert_step(c, branch)
-        end
-      when Optional
-        @branches << { rhs: @branches[branch][:rhs].clone, children: [] }
-        @branches[branch][:children] << @branches.length - 1
-        convert_step(arg.children.first, @branches.length - 1)
-      when Repeat
-        case arg.max
-        when arg.min then arg.min.times { convert_step(arg.children.first, branch) }
-        when Float::INFINITY
-          name = unique_name(:R)
-          add_production(name, arg.children.first, name, generated: true)
-          add_production(name, arg.children.first, generated: true)
-
-          arg.min.times { convert_step(arg.children.first, branch) }
-          @branches << { rhs: @branches[branch][:rhs].clone, children: [] }
-          @branches[branch][:children] << @branches.length - 1
-          @branches[@branches.length - 1][:rhs] << name
-        else
-          arg.min.times { convert_step(arg.children.first, branch) }
-          (1..arg.max - arg.min).each do |i|
-            @branches << { rhs: @branches[branch][:rhs].clone, children: [] }
-            @branches[branch][:children] << @branches.length - 1
-            i.times { convert_step(arg.children.first, @branches.length - 1) }
+        new_branches = arg.children.map.with_index do |c,i|
+          if i == 0
+            cur_branch
+          else
+            data[:branches] << { rhs: data[:branches][cur_branch][:rhs].clone, children: [] }
+            data[:branches].length - 1
           end
         end
-      when Rule then @branches[branch][:rhs] << arg.name
-      when Terminal then @branches[branch][:rhs] << (arg.name.nil? ? arg.match : arg.name)
-      else @branches[branch][:rhs] << arg
+
+        arg.children.each_with_index { |c,i| convert2(c, new_branches[i], data) }
+        new_branches.filter { |b| b != cur_branch }.each { |b| data[:branches][cur_branch][:children] << b }
+      when Concatenation then arg.children.each { |c| convert2(c, cur_branch, data) }
+      when Optional
+        data[:branches] << { rhs: data[:branches][cur_branch][:rhs].clone, children: []}
+        data[:branches][cur_branch][:children] << data[:branches].length - 1
+        convert2(arg.children.first, data[:branches].length - 1, data)
+      when Repeat
+        impl = data[:repeat_impls][arg.children.first.to_s]
+        if impl.nil?
+          impl = case arg.children.first
+                 when Rule then arg.children.first.name
+                 when Terminal then arg.children.first.name.nil? ? arg.children.first.match : arg.children.first.name
+                 when Alternation, Concatenation, Optional, Repeat
+                   name = unique_name(:I)
+                   add_production(name, arg.children.first, generated: true)
+                   name
+                 else arg.children.first
+                 end
+          data[:repeat_impls][arg.children.first.to_s] = impl
+        end
+
+        case arg.max
+        when arg.min then ret.concat [impl] * arg.min
+        when Float::INFINITY
+          name = data[:repeats][arg.children.first.to_s]
+          if name.nil?
+            name = unique_name(:R)
+            add_production(name, impl, name, generated: true)
+            add_production(name, impl, generated: true)
+            data[:repeats][arg.children.first.to_s] = name
+          end
+
+          data[:branches][cur_branch][:rhs].concat [impl] * arg.min
+          data[:branches] << { rhs: data[:branches][cur_branch][:rhs].clone, children: []}
+          data[:branches][cur_branch][:children] << data[:branches].length - 1
+          data[:branches][data[:branches].length - 1][:rhs] << name
+        else
+          data[:branches][cur_branch][:rhs].concat [impl] * arg.min
+          (1..arg.max - arg.min).each do |i|
+            data[:branches] << { rhs: data[:branches][cur_branch][:rhs].clone, children: []}
+            data[:branches][cur_branch][:children] << data[:branches].length - 1
+            data[:branches][data[:branches].length - 1][:rhs].concat [impl] * i
+          end
+        end
+      when Rule then data[:branches][cur_branch][:rhs] << arg.name
+      when Terminal then data[:branches][cur_branch][:rhs] << (arg.name.nil? ? arg.match : arg.name)
+      else data[:branches][cur_branch][:rhs] << arg
       end
     end
 

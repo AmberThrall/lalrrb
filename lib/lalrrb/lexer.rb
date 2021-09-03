@@ -25,28 +25,28 @@ module Lalrrb
   end
 
   class Lexer
+    attr_reader :tokens
+
     def initialize
       @tokens = {}
-    end
-
-    def tokens
-      @tokens.keys
     end
 
     def token(name, match, *flags, &block)
       return if match.to_s.empty? || @tokens.include?(name)
 
       block_closure = block.nil? ? nil : proc { |x| instance_exec(x, &block) }
-      @tokens[name] = { match: match, flags: convert_flags(name, flags), on_match: block_closure }
+      @tokens[name] = { match: match, flags: convert_flags(name, flags), block: block_closure }
     end
 
     def ignore(match, *flags)
       return if match.to_s.empty?
 
-      name = "ignore#{@tokens.length}".to_sym
-      flags = convert_flags(:ignore, flags)
+      i = 0
+      name = "ignore#{i += 1}".to_sym while name.nil? || @tokens.include?(name)
+
+      flags = convert_flags(name, flags)
       flags[:ignore] = true
-      @tokens[name] = { match: match, flags: flags, on_match: nil }
+      @tokens[name] = { match: match, flags: flags, block: nil }
     end
 
     def delete_token(name)
@@ -67,7 +67,7 @@ module Lalrrb
 
     def accept(token)
       @position = token.position + token.value.length
-      token.value = @tokens[token.name][:on_match].call(token.value) unless @tokens[token.name][:on_match].nil?
+      token.value = @tokens[token.name][:block].call(token.value) unless @tokens[token.name][:block].nil?
     end
 
     private

@@ -1,4 +1,6 @@
-require_relative '../lib/lalrrb'
+# frozen_string_literal: true
+
+require 'lalrrb'
 require 'bigdecimal'
 
 Lalrrb.create(:Expr, %(

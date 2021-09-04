@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative '../lib/lalrrb'
+require 'lalrrb'
 
 # A tiny-C parser adapted from https://gist.github.com/KartikTalwar/3095780
 Lalrrb.create(:TinyC, %(
@@ -32,7 +32,10 @@ TinyC.grammar.syntax_diagram.save('tiny-c-syntax-diagram.svg')
 
 def exec(node)
   case node.name
-  when :program then exec(node[:statement])
+  when :program
+    @variables = {}
+    exec(node[:statement])
+    @variables
   when :statement
     case node[0].value
     when "if"
@@ -78,7 +81,7 @@ def exec(node)
   end
 end
 
-root = TinyC.parse(%(
+exec(TinyC.parse(%(
   {
     /* Compute the 10th fibonnaci number. */
     a = 1;
@@ -91,9 +94,4 @@ root = TinyC.parse(%(
       n = n + 1;
     }
   }
-))
-root.graphviz.output(png: "tiny-c.png")
-
-@variables = {}
-exec(root)
-@variables.each { |k,v| puts "#{k} = #{v}" }
+))).each { |k,v| puts "#{k} = #{v}" }

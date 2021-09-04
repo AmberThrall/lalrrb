@@ -1,12 +1,24 @@
 # frozen_string_literal: true
 
 require "bundler/gem_tasks"
-require "rake/testtask"
 
-Rake::TestTask.new(:test) do |t|
-  t.libs << "test"
-  t.libs << "lib"
-  t.test_files = FileList["test/**/*_test.rb"]
+task default: :build
+
+namespace :examples do |ns|
+  FileList["examples/*.rb"].each do |path|
+    basename = File.basename(path, ".rb")
+    
+    desc "Run example #{basename}"
+    task basename do
+      ruby path
+    end
+  end
+
+  desc "Run every example"
+  task :all do |t|
+    ns.tasks.filter { |task| task != t }.each do |task|
+      Rake::Task[task].execute
+      puts ""
+    end
+  end
 end
-
-task default: :test

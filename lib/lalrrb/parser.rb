@@ -77,7 +77,8 @@ module Lalrrb
         when :accept then break
         when nil
           matches = @grammar.terminals.filter { |z| !@table[z, state].nil? }
-          err = "Expected #{matches.join(', ')} but encountered '#{ahead}' in state #{state}"
+          tokens = @lexer.next
+          err = "Expected #{matches.join(', ')} but encountered #{tokens.join(', ')} on line #{@lexer.lineno}"
           raise StandardError, err if raise_on_error
           warn "Error: #{err}"
 

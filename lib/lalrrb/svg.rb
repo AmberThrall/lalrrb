@@ -71,6 +71,7 @@ module Lalrrb
       def initialize(text, x, y, **attributes)
         text = text.gsub("<", "&lt;")
         text = text.gsub(">", "&gt;")
+        text = text.gsub("&", "&amp;")
         super(:text, [text], x: x, y: y, **attributes)
       end
     end

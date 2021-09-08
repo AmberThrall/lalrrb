@@ -11,21 +11,23 @@ module Lalrrb
       token(:DIGIT, /[0-9]/)
       token(:RULENAME, /[A-Za-z_][A-Za-z0-9_-]*/)
       token(:COMMENT, /;.*\r\n/)
-      token(:CHAR_VAL, /"(?:\\u[0-9A-Fa-f]{4}|\\["\\abrnst]|[^"\\\r\n])*"/) { |value| value.undump }
-      token(:REGEXP_VAL, /%r\/(?:\\u[0-9A-Fa-f]{4}|\\[\/\\\*\(\)\[\]\^\$\|\+\?\{\}\.AzsSdDwWhHGbBrntvf]|[^\/\\\r\n])*\/[a-zA-Z]*/)
+      token(:CHAR_VAL, /"(?:\\.|[^"\\\r\n])*"/) { |value| value.undump }
+      token(:CHAR_VAL2, /'(?:\\.|[^'\\\r\n])*'/) { |value| value.gsub('\'','"').undump }
+      token(:REGEXP_VAL, /%r\/(?:\\.|[^\/\\\r\n])*\/[A-Za-z]*/)
       token(:BIN_VAL, /%b[01]+(?:(?:\.[01]+)+|-[01]+)?/)
       token(:DEC_VAL, /%d[0-9]+(?:(?:\.[0-9]+)+|-[0-9]+)?/)
       token(:HEX_VAL, /%x[0-9A-Fa-f]+(?:(?:\.[0-9A-Fa-f]+)+|-[0-9A-Fa-f]+)?/)
       #token(:PROSE_VAL, /<[\u0020-\u003D\u003F-\u007E]>/)
-      ignore(/[ \t]/)
+      ignore([" ", "\t"])
 
       start(:rulelist)
       rule(:rulelist) { (command / rule / c_nl).repeat }
-      rule(:command) { '%' >> (token / ignore / start) }
-      rule(:token) { "token" >> '(' >> RULENAME >> ',' >> token_value >> ')' >> c_nl }
-      rule(:ignore) { "ignore" >> '(' >> token_value >> ')' >> c_nl }
+      rule(:command) { token / ignore / start }
+      rule(:token) { "%token" >> '(' >> RULENAME >> ',' >> token_value >> ')' >> c_nl }
+      rule(:ignore) { "%ignore" >> '(' >> token_value >> ')' >> c_nl }
+      rule(:start) { "%start" >> '(' >> RULENAME >> ')' >> c_nl }
       rule(:token_value) { value >> ('/' >> value).repeat }
-      rule(:start) { "start" >> '(' >> RULENAME >> ')' >> c_nl }
+
       rule(:rule) { RULENAME >> defined_as >> alternation >> c_nl }
       rule(:defined_as) { '=' / '=/' }
       rule(:c_nl) { COMMENT / CRLF }
@@ -34,7 +36,7 @@ module Lalrrb
       rule(:repetition) { repeat? >> element }
       rule(:repeat) { DIGIT.repeat(1) / (DIGIT.repeat >> '*' >> DIGIT.repeat) }
       rule(:element) { group / option / value }
-      rule(:value) {  RULENAME / CHAR_VAL / REGEXP_VAL / BIN_VAL / DEC_VAL / HEX_VAL } # / PROSE_VAL }
+      rule(:value) { RULENAME / CHAR_VAL / REGEXP_VAL / BIN_VAL / DEC_VAL / HEX_VAL } # / PROSE_VAL }
       rule(:group) { '(' >> alternation >> ')' }
       rule(:option) { '[' >> alternation >> ']' }
     end
@@ -43,9 +45,9 @@ module Lalrrb
       @parser ||= Parser.new(Grammar)
 
       lines = text.lines.map(&:rstrip)
-      lines.delete_if { |l| l.empty? }
-      offset = lines.map { |l| l.length - l.lstrip.length }.min
-      lines = lines.map { |l| l[offset..] }
+      # lines.delete_if { |l| l.empty? }
+      # offset = lines.map { |l| l.length - l.lstrip.length }.min
+      # lines = lines.map { |l| l[offset..] }
       text = lines.join("\r\n")
       text += "\r\n"
 
@@ -112,7 +114,7 @@ module Lalrrb
     end
 
     def parse_command(node)
-      node = node[1]
+      node = node[0]
 
       case node.name
       when :start then @g.start(node[:RULENAME].value.to_sym)
@@ -139,7 +141,7 @@ module Lalrrb
       when :RULENAME
         name = node.value.to_sym
         @g.tokens.include?(name) ? Terminal.new(@g.tokens[name][:match], name: name) : Rule.new(name)
-      when :CHAR_VAL then Terminal.new(node.value)
+      when :CHAR_VAL, :CHAR_VAL2 then Terminal.new(node.value)
       when :REGEXP_VAL
         f = node.value.rindex('/')
         options = node.value[f + 1..]
@@ -160,11 +162,15 @@ module Lalrrb
 
         ret = if value.include?('-')
           parts = value.partition('-')
-          min = parts[0].to_i(base)
-          max = parts[2].to_i(base)
-          Regexp.new("[#{min.chr}-#{max.chr}]")
+          min = parts[0].to_i(base).chr(Encoding::UTF_8)
+          max = parts[2].to_i(base).chr(Encoding::UTF_8)
+          begin
+            Regexp.new("[#{Regexp.escape(min)}-#{Regexp.escape(max)}]")
+          rescue RegexpError
+            raise Error, "Invalid range `#{node.value}'."
+          end
         else
-          value.split('.').map { |x| x.to_i(base).chr }.join
+          value.split('.').map { |x| x = x.to_i(base).chr(Encoding::UTF_8) }.join
         end
 
         Terminal.new(ret)

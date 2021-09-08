@@ -39,9 +39,9 @@ def compute(node)
   end
 end
 
-puts Expr.grammar
+puts Expr::Grammar
 
-Expr.grammar.syntax_diagram.save('expr-syntax-diagram.svg')
+Expr::Grammar.syntax_diagram.save('expr-syntax-diagram.svg')
 
 loop do
   begin

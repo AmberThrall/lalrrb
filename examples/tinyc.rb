@@ -28,7 +28,7 @@ Lalrrb.create(:TinyC, %(
     term = ID / INT / HEX / paren_expr
 ))
 
-TinyC.grammar.syntax_diagram.save('tiny-c-syntax-diagram.svg')
+TinyC::Grammar.syntax_diagram.save('tiny-c-syntax-diagram.svg')
 
 def exec(node)
   case node.name

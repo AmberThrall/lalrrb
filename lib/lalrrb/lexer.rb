@@ -58,6 +58,10 @@ module Lalrrb
       @position = 0
     end
 
+    def lineno
+      @text[..@position].count("\n") + 1
+    end
+
     def next
       matches = get_matches(@position)
       raise StandardError, "Couldn't match any tokens with string '#{@text[@position..].length > 10 ? @text[@position..@position+10] + '...' : @text[@position..]}'" if matches.empty?

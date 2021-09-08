@@ -25,6 +25,7 @@ module Lalrrb
 
       name = arg0
       ps = convert(*args).map do |rhs|
+        rhs.delete(nil)
         p = Production.new(name, rhs, generated: generated)
         next if @productions.include?(p)
 
@@ -476,7 +477,7 @@ module Lalrrb
         end
 
         case arg.max
-        when arg.min then ret.concat [impl] * arg.min
+        when arg.min then data[:branches][cur_branch][:rhs].concat [impl] * arg.min
         when Float::INFINITY
           name = data[:repeats][arg.children.first.to_s]
           if name.nil?

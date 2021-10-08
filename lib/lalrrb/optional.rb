@@ -9,7 +9,8 @@ module Lalrrb
     end
 
     def to_s
-      "[#{@children.first.to_s}]"
+      s = @children.first.to_s
+      "(#{s})?"
     end
 
     def to_h
@@ -17,6 +18,10 @@ module Lalrrb
         type: @type,
         term: @children.first.to_h
       }
+    end
+
+    def to_regex
+      Regexp.new("(#{@children.first.to_regex.source})?")
     end
 
     def to_svg

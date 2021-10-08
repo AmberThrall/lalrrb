@@ -5,7 +5,7 @@ require_relative 'terminal'
 
 module Lalrrb
   class Rule < Nonterminal
-    attr_reader :name
+    attr_accessor :name
 
     def initialize(name, &block)
       super(:rule)
@@ -20,13 +20,14 @@ module Lalrrb
     end
 
     def to_h(expand: false)
-      return { type: @type, name: @name, production: production.to_h} if expand
-      { type: @type, name: @name, production: :hidden }
+      h = { type: @type, name: @name, production: :hidden }
+      h[:production] = production.to_h if expand
+      h
     end
 
     def production
       ret = @block.call
-      return Terminal.new(ret) if ret.is_a?(String) || ret.is_a?(Regexp)
+      return Terminal.new(ret) unless ret.is_a?(Nonterminal)
 
       ret
     end
@@ -35,6 +36,10 @@ module Lalrrb
       matches = super(type)
       matches.concat production.search(type) if expand
       matches
+    end
+
+    def to_regex
+      production.to_regex
     end
 
     def to_svg(expand: false)

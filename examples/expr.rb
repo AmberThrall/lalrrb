@@ -1,23 +1,36 @@
 # frozen_string_literal: true
 
 require 'lalrrb'
-require 'bigdecimal'
 
-Lalrrb.create(:Expr, %(
-  %token(DIGIT, %x30-39)
-  %ignore(" " / "\\t")
-  %start(expr)
+Expr = Lalrrb.create(%(
+  token NUMBER : "-"? DIGITS FRACTION? EXPONENT? -> to_f ;
+  fragment FRACTION : "." DIGITS ;
+  fragment EXPONENT : [eE] [+-]? DIGITS ;
+  fragment DIGITS : ("0".."9")+ ;
+  token SP : " " | "\\t" -> skip ;
+  options { start = expr; }
 
-  expr = sum
-  sum = sum ("+" / "-") product / product
-  product = product ("*" / "/") power / power
-  power = power "^" term / term
-  term = "(" expr ")" / number
-  number = ["-"] digits [fraction] [exponent]
-  fraction = "." digits
-  exponent = ("e" / "E") ["-"] digits
-  digits = 1*DIGIT
-))
+  expr : sum ;
+  sum
+    : sum ("+" | "-") product
+    | product
+    ;
+
+  product
+    : product ("*" | "/") power
+    | power
+    ;
+
+  power
+    : power "**" term
+    | term
+    ;
+
+  term
+    : "(" expr ")"
+    | NUMBER
+    ;
+), benchmark: true)
 
 def compute(node)
   case node.name
@@ -32,16 +45,14 @@ def compute(node)
     when "-" then lhs - rhs
     when "*" then lhs * rhs
     when "/" then lhs / rhs
-    when "^" then lhs ** rhs
+    when "**" then lhs ** rhs
     end
-  when :term then compute(node[:expr].nil? ? node[:number] : node[:expr])
-  when :number then BigDecimal(node.value)
+  when :term then compute(node[:expr].nil? ? node[:NUMBER] : node[:expr])
+  when :NUMBER then node.value
   end
 end
 
 puts Expr::Grammar
-
-Expr::Grammar.syntax_diagram.save('expr-syntax-diagram.svg')
 
 loop do
   begin
@@ -50,8 +61,8 @@ loop do
     break if prompt.downcase == "quit"
 
     root = Expr.parse(prompt)
-    puts compute(root).to_s('F')
-  rescue StandardError => e
+    puts compute(root)
+  rescue Lalrrb::Error => e
     warn "Syntax Error: #{e.message}"
   end
 end

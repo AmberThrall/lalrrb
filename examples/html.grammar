@@ -1,0 +1,126 @@
+/**
+ * A grammar for the language HTML.
+ *
+ * Modified from: https://github.com/antlr/grammars-v4/tree/master/html
+ */
+
+/**
+ * Tokens
+ */
+token HTML_COMMENT : '<!--' ('-' [^>]|[^>-])* '-->';
+token HTML_CONDITIONAL_COMMENT : '<![' [^\]]* ']>';
+token XML : '<?xml' [^>]* '>' ;
+token CDATA : '<![CDATA[' [^\]]* ']]' ;
+token DTD : '<!' [^>]* '>' ;
+token SCRIPTLET
+  : '<?' [^>]* '>'
+  | '<%' [^>]* '>'
+  ;
+token SEA_WS : " " | "\t" | "\r"? "\n" -> skip ;
+token SCRIPT_OPEN : '<script' [^>]* '>' -> push_mode(SCRIPT) ;
+token STYLE_OPEN : '<style' [^>]* '>' -> push_mode(STYLE) ;
+token TAG_OPEN_SLASH : '</' -> push_mode(TAG) ;
+token TAG_OPEN : '<' -> push_mode(TAG) ;
+token HTML_TEXT : [^<]+ ;
+
+// Tag declarations
+token(TAG) TAG_CLOSE : '>' -> pop_mode ;
+token(TAG) TAG_SLASH_CLOSE : '/>' -> pop_mode ;
+token(TAG) TAG_EQUALS : '=' -> push_mode(ATTVALUE) ;
+token(TAG) TAG_NAME : TAG_NameStartChar TAG_NameChar* ;
+token(TAG) TAG_WHITESPACE : " " | "\t" | "\r" | "\n" -> skip ;
+fragment HEXDIGIT : [a-fA-F0-9] ;
+fragment DIGIT : [0-9] ;
+fragment TAG_NameChar
+  : TAG_NameStartChar
+  | '-'
+  | '_'
+  | '.'
+  | DIGIT
+  | '\u00B7'
+  | '\u0300'..'\u036F'
+  | '\u203F'..'\u2040'
+  ;
+fragment TAG_NameStartChar
+  : [:a-zA-Z]
+  | '\u2070'..'\u218F'
+  | '\u2C00'..'\u2FEF'
+  | '\u3001'..'\uD7FF'
+  | '\uF900'..'\uFDCF'
+  | '\uFDF0'..'\uFFFD'
+  ;
+
+// Scripts
+token(SCRIPT) SCRIPT_BODY : /(<[^\/]|[^<])*/ '</script>' -> pop_mode ;
+token(SCRIPT) SCRIPT_SHORT_BODY : /(<[^\/]|[^<])*/ '</>' -> pop_mode ;
+
+// Styles
+token(STYLE) STYLE_BODY : /(<[^\/]|[^<])*/ '</style>' -> pop_mode ;
+token(STYLE) STYLE_SHORT_BODY : /(<[^\/]|[^<])*/ '</>' -> pop_mode ;
+
+// Attribute values
+token(ATTVALUE) ATTVALUE_VALUE : ' '* ATTRIBUTE -> pop_mode ;
+fragment ATTRIBUTE
+  : DOUBLE_QUOTE_STRING
+  | SINGLE_QUOTE_STRING
+  | ATTCHARS
+  | HEXCHARS
+  | DECCHARS
+  ;
+fragment ATTCHARS : ATTCHAR+ ' '? ;
+fragment ATTCHAR
+  : '-'
+  | '_'
+  | '.'
+  | '/'
+  | '+'
+  | ','
+  | '?'
+  | '='
+  | ':'
+  | ';'
+  | '#'
+  | [0-9a-zA-Z]
+  ;
+fragment HEXCHARS : '\#' [0-9a-fA-F]+ ;
+fragment DECCHARS : [0-9]+ '%' ;
+fragment DOUBLE_QUOTE_STRING : '"' /(\\.|[^"])*/ '"' ;
+fragment SINGLE_QUOTE_STRING : "'" /(\\.|[^'])*/ "'" ;
+
+/**
+ * Rules
+ */
+options { start = htmlDocument; }
+
+htmlDocument : SCRIPTLET* XML? SCRIPTLET* DTD? SCRIPTLET* htmlElements* ;
+
+htmlElements : htmlComment* htmlElement htmlComment* ;
+
+htmlElement
+  : SCRIPTLET
+  | tag
+  | script
+  | style
+  ;
+
+tag
+  : TAG_OPEN TAG_NAME htmlAttribute* TAG_SLASH_CLOSE
+  | TAG_OPEN TAG_NAME htmlAttribute* TAG_CLOSE htmlContent* TAG_OPEN_SLASH TAG_NAME TAG_CLOSE
+  ;
+
+script : SCRIPT_OPEN (SCRIPT_BODY | SCRIPT_SHORT_BODY) ;
+style : STYLE_OPEN (STYLE_BODY | STYLE_SHORT_BODY) ;
+
+htmlContent
+  : htmlElement
+  | CDATA
+  | htmlComment
+  | HTML_TEXT
+  ;
+
+htmlAttribute : TAG_NAME (TAG_EQUALS ATTVALUE_VALUE)? ;
+
+htmlComment
+  : HTML_COMMENT
+  | HTML_CONDITIONAL_COMMENT
+  ;

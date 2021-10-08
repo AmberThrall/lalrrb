@@ -17,11 +17,15 @@ module Lalrrb
       case other
       when Concatenation then @children.concat other
       when Nonterminal then @children << other
-      when Regexp, String then @children << Terminal.new(other)
-      else raise Error, "Invalid value on rhs of >>."
+      when Regexp, String, Array then @children << Terminal.new(other)
+      else raise Error, "invalid value on rhs of >>"
       end
 
       self
+    end
+
+    def to_regex
+      Regexp.new(@children.map { |c| c.to_regex.source }.join)
     end
 
     def to_svg

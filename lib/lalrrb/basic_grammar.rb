@@ -10,7 +10,7 @@ module Lalrrb
     attr_reader :productions, :terminals, :nonterminals
 
     def initialize(lexer: nil)
-      @lexer = lexer.is_a?(Lexer) ? lexer : Lexer.new
+      @lexer = lexer.nil? ? Lexer.new : lexer
       @productions = []
       @terminals = Set[]
       @nonterminals = Set[]
@@ -35,7 +35,7 @@ module Lalrrb
         @lexer.delete_token name
         rhs.each do |x|
           @terminals.add x unless @nonterminals.include?(x)
-          @lexer.token(x, x) if !@nonterminals.include?(x)
+          @lexer.token(x, x) if !@nonterminals.include?(x) && !@lexer.tokens.include?(x) && x != :EOF
         end
         p
       end
@@ -179,7 +179,7 @@ module Lalrrb
             name = "N#{z}".to_sym if z.is_a?(Symbol) || !z.to_s.match(/[A-Za-z0-9_]+/).nil?
             name = unique_name(:N) if symbol?(name)
             add_production(name, z, generated: true)
-            new_rhs << name
+            new_rhs << GSymbol.new(name)
             terms[z] = name
           end
         end
@@ -281,6 +281,24 @@ module Lalrrb
       merge_duplicate_rules
     end
 
+    def regular?
+      right_regular? || left_regular?
+    end
+
+    def right_regular?
+      @productions.each do |p|
+        nonterminals = p.rhs.map { |z| nonterminal?(z) }
+        return false if nonterminals[..-2].count(true).positive?
+      end
+    end
+
+    def left_regular?
+      @productions.each do |p|
+        nonterminals = p.rhs.map { |z| nonterminal?(z) }
+        return false if nonterminals[1..].count(true).positive?
+      end
+    end
+
     def [](index)
       case index
       when Integer then @productions[index]
@@ -306,29 +324,20 @@ module Lalrrb
       terminal?(x) || nonterminal?(x)
     end
 
-    def to_s
-      s = "% start: #{@start.nil? ? '?' : @start}\n"
-      s += "% terminals:"
-      @terminals.each { |z| s += " #{z}" }
-      return s if @productions.empty?
+    def pretty_print
+      puts "% start: #{@start.nil? ? 'undefined' : @start}"
+      print "% terminals:"
+      @terminals.each { |z| print " #{z}" }
+      puts ""
 
-      rows = []
-      ([@start].concat @nonterminals.filter { |x| x != @start }).each do |x|
-        next if self[x].nil?
+      left_width = @nonterminals.map(&:to_s).map(&:length).max
 
-        r = [x.to_s]
-        Array(self[x]).each_with_index { |p,i| r << (p.null? ? 'ϵ' : p.rhs.join(' ')) }
-        rows << r
+      @nonterminals.each do |x|
+        @productions.filter { |p| p.name == x }.each_with_index do |p, i|
+          print "#{i.zero? ? "#{x.to_s.ljust(left_width)} -> " : "#{' ' * left_width} |  " }"
+          puts "#{p.to_s[x.to_s.length+4..]}"
+        end
       end
-
-      ncols = rows.map(&:length).max
-      col_widths = [*(0..ncols)].map { |i| rows.map { |r| r[i].to_s.length }.max }
-
-      rows.each do |r|
-        s += "\n#{r[0].ljust(col_widths[0])} -> "
-        [*(1..r.length - 1)].each { |i| s += "#{i > 1 ? ' / ' : ''}#{r[i].ljust(col_widths[i])}" }
-      end
-      s
     end
 
     def symbols
@@ -465,32 +474,32 @@ module Lalrrb
         impl = data[:repeat_impls][arg.children.first.to_s]
         if impl.nil?
           impl = case arg.children.first
-                 when Rule then arg.children.first.name
-                 when Terminal then arg.children.first.name.nil? ? arg.children.first.match : arg.children.first.name
-                 when Alternation, Concatenation, Optional, Repeat
-                   name = unique_name(:I)
-                   add_production(name, arg.children.first, generated: true)
-                   name
-                 else arg.children.first
-                 end
+          when Rule then arg.children.first.name
+          when Terminal then arg.children.first.name.nil? ? arg.children.first.match : arg.children.first.name
+          when Alternation, Concatenation, Optional, Repeat
+            impl_name = unique_name(:I)
+            add_production(impl_name, arg.children.first, generated: true)
+            impl_name
+          else arg.children.first
+          end
           data[:repeat_impls][arg.children.first.to_s] = impl
         end
 
         case arg.max
         when arg.min then data[:branches][cur_branch][:rhs].concat [impl] * arg.min
         when Float::INFINITY
-          name = data[:repeats][arg.children.first.to_s]
-          if name.nil?
-            name = unique_name(:R)
-            add_production(name, impl, name, generated: true)
-            add_production(name, impl, generated: true)
-            data[:repeats][arg.children.first.to_s] = name
+          rep_name = data[:repeats][arg.children.first.to_s]
+          if rep_name.nil?
+            rep_name = unique_name(:R)
+            add_production(rep_name, impl, rep_name, generated: true)
+            add_production(rep_name, impl, generated: true)
+            data[:repeats][arg.children.first.to_s] = rep_name
           end
 
           data[:branches][cur_branch][:rhs].concat [impl] * arg.min
           data[:branches] << { rhs: data[:branches][cur_branch][:rhs].clone, children: []}
           data[:branches][cur_branch][:children] << data[:branches].length - 1
-          data[:branches][data[:branches].length - 1][:rhs] << name
+          data[:branches][data[:branches].length - 1][:rhs] << rep_name
         else
           data[:branches][cur_branch][:rhs].concat [impl] * arg.min
           (1..arg.max - arg.min).each do |i|
@@ -501,6 +510,7 @@ module Lalrrb
         end
       when Rule then data[:branches][cur_branch][:rhs] << arg.name
       when Terminal then data[:branches][cur_branch][:rhs] << (arg.name.nil? ? arg.match : arg.name)
+      when Epsilon then # skip
       else data[:branches][cur_branch][:rhs] << arg
       end
     end

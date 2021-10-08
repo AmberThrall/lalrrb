@@ -2,75 +2,104 @@
 
 require 'lalrrb'
 
-class Json
-  class Grammar < Lalrrb::Grammar
-    token(:NUMBER, /-?\d+(\.\d+)?([eE][+-]?\d+)?/) { |value| value.to_i.to_f == value.to_f ? value.to_i : value.to_f }
-    token(:STRING, /"(?:\\["\\\/bfnrt]|\\u[0-9A-Fa-f]{4}|[^"\\])*"/) { |value| value.undump }
-    ignore(/[\u0020\u000A\u000D\u0009]/)
+module Json
+  Grammar = Lalrrb.create(%(
+    token NUMBER : "-"? DIGITS FRACTION? EXPONENT? ;
+    fragment FRACTION : "." DIGITS ;
+    fragment EXPONENT : [eE] [+-]? DIGITS ;
+    fragment DIGITS : [0-9]+ ;
 
-    start(:json)
-    rule(:json) { value }
-    rule(:value) { object / array / STRING / NUMBER / 'true' / 'false' / 'null' }
-    rule(:object) { ('{' >> members? >> '}') }
-    rule(:members) { member >> (',' >> member).repeat }
-    rule(:member) { STRING >> ':' >> value }
-    rule(:array) { ('[' >> elements? >> ']') }
-    rule(:elements) { value >> (',' >> value).repeat }
-  end
+    token STRING_START : '"' -> more, push_mode(STR) ;
+    token(STR) STRING_ESCAPE : '\\\\' . -> more ;
+    token(STR) STRING_CHAR : [^"\\\\]+ -> more ;
+    token(STR) STRING : '"' -> pop_mode ;
 
-  def initialize
-    @parser = Lalrrb::Parser.new(Grammar)
-  end
+    token WSP
+      : '\\u0020'
+      | '\\u000A'
+      | '\\u000D'
+      | '\\u0009'
+      -> skip ;
 
-  def parse(text, **opts)
-    opts[:symbolize_keys] ||= false
-    root, steps = @parser.parse(text, return_steps: true)
-    log.save(opts[:output_steps]) unless opts[:output_steps].to_s.empty?
-    root.graphviz.output(png: opts[:output_graphviz]) unless opts[:output_graphviz].to_s.empty?
-    root.pretty_print if opts[:print_tree]
-    parse_value(root[:value], opts)
-  end
+    options { start = json; }
+    json : value ;
+    value
+      : object
+      | array
+      | STRING
+      | NUMBER
+      | 'true'
+      | 'false'
+      | 'null'
+      ;
+    object : '{' members? '}' ;
+    members : member (',' member)* ;
+    member : STRING ':' value ;
+    array : '[' elements? ']' ;
+    elements : value (',' value)* ;
+  ), benchmark: true)
 
-  private
-
-  def parse_value(node, opts)
-    case node[0].name
-    when :object then parse_object(node[0], opts)
-    when :array then parse_array(node[0], opts)
-    when :STRING then node[0].value
-    when :NUMBER then node[0].value
-    when 'true' then true
-    when 'false' then false
-    when 'null' then nil
-    end
-  end
-
-  def parse_object(node, opts)
-    hash = {}
-    members = node[:members]
-    return hash if members.nil?
-
-    members = Array(members[:member])
-    members.each do |member|
-      key = member[:STRING].value
-      value = parse_value(member[:value], opts)
-      hash[opts[:symbolize_keys] ? key.to_sym : key] = value
+  class << self
+    def parse(text, **opts)
+      opts[:symbolize_keys] ||= false
+      opts[:debug] ||= false
+      root = Grammar.parse(text, debug: opts[:debug])
+      root.graphviz.output(png: opts[:output_graphviz]) unless opts[:output_graphviz].to_s.empty?
+      root.pretty_print if opts[:print_tree]
+      parse_value(root[:value], opts)
     end
 
-    hash
-  end
+    private
 
-  def parse_array(node, opts)
-    array = []
-    elements = node[:elements]
-    return array if elements.nil?
-
-    values = Array(elements[:value])
-    values.each do |value|
-      array << parse_value(value, opts)
+    def parse_string(node)
+      node.value.undump
     end
 
-    array
+    def parse_number(node)
+      node.value.to_i == node.value.to_f ? node.value.to_i : node.value.to_f
+    end
+
+    def parse_value(node, opts)
+      node = node[0]
+
+      case node.name
+      when :object then parse_object(node, opts)
+      when :array then parse_array(node, opts)
+      when :STRING then parse_string(node)
+      when :NUMBER then parse_number(node)
+      when 'true' then true
+      when 'false' then false
+      when 'null' then nil
+      end
+    end
+
+    def parse_object(node, opts)
+      hash = {}
+      members = node[:members]
+      return hash if members.nil?
+
+      members = Array(members[:member])
+      members.each do |member|
+        key = parse_string(member[:STRING])
+        value = parse_value(member[:value], opts)
+        hash[opts[:symbolize_keys] ? key.to_sym : key] = value
+      end
+
+      hash
+    end
+
+    def parse_array(node, opts)
+      array = []
+      elements = node[:elements]
+      return array if elements.nil?
+
+      values = Array(elements[:value])
+      values.each do |value|
+        array << parse_value(value, opts)
+      end
+
+      array
+    end
   end
 end
 
@@ -103,5 +132,4 @@ TEST_JSON = %(
   }}
 )
 
-json = Json.new
-pp json.parse(TEST_JSON, symbolize_keys: true, output_graphviz: "json.png")
+pp Json.parse(TEST_JSON, symbolize_keys: true, output_graphviz: "json.png")

@@ -13,7 +13,7 @@ module Lalrrb
     end
 
     def to_s
-      "(#{@production.to_s(position: @position)}, #{@lookahead})"
+      "(#{@production.to_s(position: @position)}, #{@lookahead == :EOF ? '$' : @lookahead})"
     end
 
     def next

@@ -9,21 +9,29 @@ module Lalrrb
     end
 
     def to_s
-      @children.map(&:to_s).join(' / ')
+      @children.map(&:to_s).join(' | ')
     end
 
-    def /(other)
+    def |(other)
       case other
       when Alternation then @children.concat other
       when Nonterminal then @children << other
-      when Regexp, String then @children << Terminal.new(other)
-      else raise Error, "Invalid value on rhs of /."
+      when Regexp, String, Array then @children << Terminal.new(other)
+      else raise Error, "invalid value on rhs of |"
       end
 
       self
     end
 
+    def to_regex
+      return @children.first.to_regex if @children.length == 1
+
+      Regexp.new("(#{@children.map { |c| c.to_regex.source }.join('|')})")
+    end
+
     def to_svg
+      return @children.first.to_svg if @children.length == 1
+
       gs = @children.map(&:to_svg)
       mg = SVG::Group.new(width: gs.map(&:width).max + 80, height: gs.map(&:height).sum + 25 * (gs.length - 1))
       mg << SVG::Path.new(SVG::Path.move_to(0, 25), SVG::Path.arc(10, 10, 0, 0, 1, 10, 35)) if gs.length > 1

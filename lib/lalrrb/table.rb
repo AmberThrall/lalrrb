@@ -11,8 +11,8 @@ module Lalrrb
       case data
       when nil then nil
       when Table then set(data.columns, data.rows, data)
-      when Hash then data.each { |k,v| add_column(k, v) }
-      else raise StandardError, "Couldn't handle table data of class #{data.class}"
+      when Hash then data.each { |k, v| add_column(k, Array(v)) }
+      else raise Error, "invalid table data of class #{data.class}"
       end
     end
 
@@ -63,7 +63,7 @@ module Lalrrb
         col = @table.keys[col] if col.is_a?(Integer)
         next unless column?(col)
 
-        @groups.each { |g,v| raise StandardError, "Column '#{col}' is already in group '#{g}'." if v.include?(col) }
+        @groups.each { |g,v| raise Error, "column `#{col}' is already in group `#{g}'" if v.include?(col) }
 
         @groups[name] << col
       end
@@ -378,7 +378,7 @@ module Lalrrb
     end
 
     def rename_row(row, label = nil)
-      raise StandardError, "Row '#{row}' already exists" if row?(label)
+      raise Error, "row `#{row}' already exists" if row?(label)
 
       row = @row_labels.find_index(row) unless row.is_a?(Integer)
       label ||= row
@@ -393,7 +393,7 @@ module Lalrrb
     end
 
     def insert_row(row, label = nil, **data)
-      raise StandardError, "Row '#{row}' already exists" if row?(label)
+      raise Error, "row `#{row}' already exists" if row?(label)
 
       row = @row_labels.find_index(row) unless row.is_a?(Integer)
       row ||= nrows
@@ -408,7 +408,7 @@ module Lalrrb
     end
 
     def add_column(heading, data = nil, options = {})
-      raise StandardError, "Column '#{heading}' already exists" if column?(heading)
+      raise Error, "column `#{heading}' already exists" if column?(heading)
       options[:align] ||= :center
       options[:valign] ||= :top
 
@@ -452,7 +452,7 @@ module Lalrrb
       return true if cell.strip == 'true'
       return false if cell.strip == 'false'
       return cell.to_i if cell.strip.match(/[0-9]+/).to_s == cell
-      return cell.gsub(decimal_sep, '.').to_f if cell.strip.match(Regexp.new "[0-9]+\\#{decimal_sep}[0-9]+").to_s == cell
+      return cell.gsub(decimal_sep, '.').to_f if cell.strip.match(Regexp.new "[0-9]+(#{Regexp.escape(decimal_sep)}[0-9]+)?([eE][+-]?[0-9]+)?").to_s == cell
       cell
     end
 

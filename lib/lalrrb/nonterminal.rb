@@ -41,17 +41,17 @@ module Lalrrb
       case other
       when Concatenation then other >> self
       when Nonterminal then Concatenation.new(self, other)
-      when Regexp, String then Concatenation.new(self, Terminal.new(other))
-      else raise Error, "Invalid value on rhs of >>."
+      when Regexp, String, Array then Concatenation.new(self, Terminal.new(other))
+      else raise Error, "invalid value on rhs of >>"
       end
     end
 
-    def /(other)
+    def |(other)
       case other
       when Alternation then other >> self
       when Nonterminal then Alternation.new(self, other)
-      when Regexp, String then Alternation.new(self, Terminal.new(other))
-      else raise Error, "Invalid value on rhs of /."
+      when Regexp, String, Array then Alternation.new(self, Terminal.new(other))
+      else raise Error, "invalid value on rhs of |"
       end
     end
 

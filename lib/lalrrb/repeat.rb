@@ -14,7 +14,17 @@ module Lalrrb
 
     def to_s
       s = @children.first.to_s
-      "#{@min.positive? ? @min : ''}*#{@max < Float::INFINITY ? @max : ''}#{s.include?(' ') ? "(#{s})" : s}"
+      s = "(#{s})"
+      case @max
+      when Float::INFINITY
+        case @min
+        when 0 then "#{s}*"
+        when 1 then "#{s}+"
+        else "#{s}\{#{@min},\}"
+        end
+      when @min then "#{s}\{#{@min}\}"
+      else "#{s}\{#{@min},#{@max}\}"
+      end
     end
 
     def to_h
@@ -24,6 +34,15 @@ module Lalrrb
         max: @max,
         term: @children.first.to_h
       }
+    end
+
+    def to_regex
+      element = "(#{@children.first.to_regex.source})"
+      return Regexp.new("#{element}*") if min == 0 && max == Float::INFINITY
+      return Regexp.new("#{element}+") if min == 1 && max == Float::INFINITY
+      return Regexp.new("#{element}{#{min}}") if min == max
+
+      Regexp.new("#{element}{#{min},#{max < Float::INFINITY ? max : ''}}")
     end
 
     def to_svg

@@ -2,32 +2,55 @@
 
 require 'lalrrb'
 
-# A tiny-C parser adapted from https://gist.github.com/KartikTalwar/3095780
-Lalrrb.create(:TinyC, %(
-    %token(ID, %x61-7A) ; a-z
-    %token(INT, %r/-?\\d+/)
-    %token(HEX, %r/0x[\\dA-Fa-f]+/)
-    %ignore(%r/\\/\\*.*\\*\\//m) ; C-style comments.
-    %ignore(" " / "\\t" / "\\r" / "\\n")
-    %start(program)
+TinyC = Lalrrb.create(%(
+  /**
+   * A grammar for the language Tiny-C.
+   *
+   * Modified from: https://gist.github.com/KartikTalwar/3095780
+   */
 
-    program = statement
+  // Tokens
+  token ID : "a".."z" -> to_sym ;
+  token INT : "-"? [0-9]+ -> to_i ;
+  token HEX : "0x" [0-9A-Fa-f]+ -> to_i(16) ;
+  /* C-Style comments */
+  token COMMENT_START : "/*" -> skip, push_mode(COMMENT) ;
+  token(COMMENT) COMMENT_TEXT : ("*" [^/]|[^*])+ -> skip ;
+  token(COMMENT) COMMENT_END : "*/" -> skip, pop_mode ;
+  /* Whitespace */
+  token WSP
+    : " "
+    | "\\t"
+    | "\\r"
+    | "\\n"
+    | "\\f"
+    -> skip ;
 
-    statement =  "if" paren_expr statement
-    statement =/ "if" paren_expr statement "else" statement
-    statement =/ "while" paren_expr statement
-    statement =/ "do" statement "while" paren_expr ";"
-    statement =/ "{" *statement "}"
-    statement =/ expr ";"
-    statement =/ ";"
+  // Actual rule definitions
+  program : statement ;
+  statement
+    : "if" paren_expr statement
+    | "if" paren_expr statement "else" statement
+    | "while" paren_expr statement
+    | "do" statement "while" paren_expr ";"
+    | "{" statement* "}"
+    | "print" paren_expr ";"
+    | expr ";"
+    | ";"
+    ;
+  paren_expr : "(" expr ")" ;
+  expr : ID "=" expr | test ;
+  test : sum "<" sum | sum ;
+  sum : sum ("+" | "-") term | term ;
+  term
+    : ID
+    | INT
+    | HEX
+    | paren_expr
+    ;
+), benchmark: true, start: :program)
 
-    paren_expr = "(" expr ")"
-    expr = ID "=" expr / test
-    test = sum "<" sum / sum
-    sum = sum ("+" / "-") term / term
-    term = ID / INT / HEX / paren_expr
-))
-
+puts TinyC::Grammar
 TinyC::Grammar.syntax_diagram.save('tiny-c-syntax-diagram.svg')
 
 def exec(node)
@@ -35,9 +58,8 @@ def exec(node)
   when :program
     @variables = {}
     exec(node[:statement])
-    @variables
   when :statement
-    case node[0].value
+    case node[0].name
     when "if"
       if exec(node[1])
         exec(node[2])
@@ -50,8 +72,8 @@ def exec(node)
       exec(node[:statement])
       exec(node[:statement]) while exec(node[:paren_expr])
     when "{" then Array(node[:statement]).each { |n| exec(n) }
-    when ";" then nil
-    else exec(node[:expr])
+    when "print" then puts exec(node[:paren_expr])
+    when :expr then exec(node[:expr])
     end
   when :paren_expr then exec(node[:expr])
   when :expr
@@ -68,16 +90,12 @@ def exec(node)
     when "+" then lhs + rhs
     when "-" then lhs - rhs
     end
-  when :term
-    case node[0].name
-    when :ID
-      raise StandardError, "Unknown variable '#{node[0].value}'" unless @variables.include?(node[0].value)
+  when :term then exec(node[0])
+  when :ID
+    raise StandardError, "Unknown variable `#{node.value}'" unless @variables.include?(node.value)
 
-      @variables[node[0].value]
-    when :INT then node[0].value.to_i
-    when :HEX then node[0].value[2..].to_i(16)
-    when :paren_expr then exec(node[0])
-    end
+    @variables[node.value]
+  when :INT, :HEX then node.value
   end
 end
 
@@ -88,10 +106,12 @@ exec(TinyC.parse(%(
     b = 2;
     n = 3;
 
-    while (n < 10) {
+    while (n < 0xA) {
       b = a + b;
       a = b - a;
       n = n + 1;
     }
+
+    print(b);
   }
-))).each { |k,v| puts "#{k} = #{v}" }
+)))

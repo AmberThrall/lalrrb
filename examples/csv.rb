@@ -1,23 +1,42 @@
 # frozen_string_literal: true
 
 require 'lalrrb'
+require 'lalrrb/ext'
 
 module CSV
-  Lalrrb.create(:Parser, %(
-    %token(TEXT, %r/[^",\\n\\r]+/)
-    %token(STRING, %r/"(""|[^"])*"/)
-    %token(LN, "\\r\\n" / "\\n")
-    %start(csv)
+  Parser = Lalrrb.create(%(
+    /**
+     * A grammar for Comma-separated values (CSV).
+     *
+     * Modified from: https://github.com/antlr/grammars-v4/blob/848128bbe7e5ae6db901192c5665d877d0fcceff/csv/CSV.g4
+     */
 
-    csv = hdr 1*row
-    hdr = row
-    row = field *("," field) LN
-    field = [TEXT / STRING]
-), benchmark: true)
+    // Tokens
+    token TEXT : [^",\\n\\r]+ ;
+    token STRING : '"' ('""'|[^"])* '"' ;
+    token LN : \\r? \\n ;
+
+    // Entry point for grammar
+    options {
+      start = csv;
+      conflict_mode = first;
+    }
+
+    // Actual rule definitions
+    csv : hdr row+ ;
+    hdr : row ;
+
+    row : field ("," field)* LN ;
+    field
+      : TEXT
+      | STRING
+      |
+      ;
+  ), benchmark: true, benchmark_caption: "", benchmark_format: "%10.6t s\n")
 
   class << self
-    def parse(text)
-      root = CSV::Parser.parse(text)
+    def parse(text, debug: false)
+      root = CSV::Parser.parse(text, debug: debug)
 
       table = Lalrrb::Table.new
       row(root[:hdr][:row]).each { |v| table.add_column(v) }
@@ -41,6 +60,7 @@ module CSV
   end
 end
 
+puts CSV::Parser::Grammar
 CSV::Parser::Grammar.syntax_diagram.save("csv-syntax-diagram.svg")
 
 table = CSV.parse(%(Year,Make,Model,Description,Price
@@ -49,5 +69,5 @@ table = CSV.parse(%(Year,Make,Model,Description,Price
 1999,Chevy,"Venture ""Extended Edition, Very Large""",,5000.00
 1996,Jeep,Grand Cherokee,"MUST SELL!
 air, moon roof, loaded",4799.00
-))
+), debug: true)
 table.pretty_print

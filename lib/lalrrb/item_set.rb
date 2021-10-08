@@ -70,6 +70,18 @@ module Lalrrb
       @items.include?(item)
     end
 
+    def each(&block)
+      @items.each(&block)
+    end
+
+    def each_with_index(&block)
+      @items.each_with_index(&block)
+    end
+
+    def map(&block)
+      @items.map(&block)
+    end
+
     def to_a
       @items
     end
@@ -93,14 +105,13 @@ module Lalrrb
       other.items.each { |i| add i }
     end
 
-    def to_s(gap: 2, border: true)
-      return "[]" if empty?
-
+    def pretty_print
       ps = []
       ts = []
       @items.each do |i|
         p = i.production.to_s(position: i.position)
-        t = i.lookahead.to_s
+        t = i.lookahead == :EOF ? '$' : i.lookahead.to_s
+        t = '","' if t == ','
         if index = ps.find_index(p)
           ts[index] += ",#{t}"
         else
@@ -109,13 +120,19 @@ module Lalrrb
         end
       end
 
-      ps_width = ps.map(&:length).max
-      ts_width = ts.map(&:length).max
-      width = ps_width + gap + ts_width
-      s = border ? "┌#{'─' * width}┐\n" : ''
-      (0..ps.length - 1).each { |i| s += "#{border ? '│' : ''}#{ps[i].ljust(ps_width)}#{' ' * gap}#{ts[i].rjust(ts_width)}#{border ? '│' : ''}\n" }
-      s += "└#{'─' * width}┘" if border
-      s
+      if ps.empty?
+        puts "[]"
+      elsif ps.length == 1
+        puts "[(#{ps.first}, #{ts.first})]"
+      else
+        ps_width = ps.map(&:length).max
+        ts_width = ts.map(&:length).max
+        puts "["
+        (0..ps.length - 1).each do |i|
+          puts "  (#{(ps[i]+',').ljust(ps_width+1)} #{ts[i].ljust(ts_width)})#{i == ps.length - 1 ? '' : ','}"
+        end
+        puts "]"
+      end
     end
   end
 end

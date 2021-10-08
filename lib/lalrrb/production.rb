@@ -2,13 +2,11 @@
 
 module Lalrrb
   class Production
-    attr_accessor :rhs
-    attr_reader :name
+    attr_accessor :name, :rhs
 
     def initialize(name, *rhs, generated: false)
       @name = name
       @rhs = rhs.flatten
-      @rhs.delete_if { |r| r.to_s.empty? }
       @generated = generated
     end
 

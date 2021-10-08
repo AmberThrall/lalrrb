@@ -12,17 +12,17 @@ module Lalrrb
       case other
       when Concatenation then other >> Terminal.new(self)
       when Nonterminal then Concatenation.new(Terminal.new(self), other)
-      when String, Regexp then Concatenation.new(Terminal.new(self), Terminal.new(other))
-      else raise Error, 'Invalid value to the right of >>.'
+      when String, Regexp, Array then Concatenation.new(Terminal.new(self), Terminal.new(other))
+      else raise Error, 'invalid value to the right of >>'
       end
     end
 
-    def /(other)
+    def |(other)
       case other
-      when Alternation then other / Terminal.new(self)
+      when Alternation then other | Terminal.new(self)
       when Nonterminal then Alternation.new(Terminal.new(self), other)
-      when String, Regexp then Alternation.new(Terminal.new(self), Terminal.new(other))
-      else raise Error, 'Invalid value to the right of /.'
+      when String, Regexp, Array then Alternation.new(Terminal.new(self), Terminal.new(other))
+      else raise Error, 'invalid value to the right of |'
       end
     end
 
@@ -41,5 +41,9 @@ class String
 end
 
 class Regexp
+  include Lalrrb::ClassExtensions
+end
+
+class Array
   include Lalrrb::ClassExtensions
 end

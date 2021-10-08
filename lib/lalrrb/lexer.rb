@@ -1,6 +1,24 @@
 # frozen_string_literal: true
 
 module Lalrrb
+  TextPosition = Struct.new(:offset, :text) do
+    def line
+      text[..offset].count("\n") + 1
+    end
+
+    def column
+      offset - text[..offset].rindex("\n").to_i + 1
+    end
+
+    def to_i
+      offset
+    end
+
+    def to_s
+      "#{line}:#{column}"
+    end
+  end
+
   class Token
     attr_accessor :name, :value, :position
 
@@ -24,91 +42,134 @@ module Lalrrb
     end
   end
 
+  class LexerError < StandardError
+    def initialize(position, text, mode, text_preview_length: 10)
+      pos = TextPosition.new(position, text)
+      text_preview = text[position..].dump[1..-2]
+      text_preview = "#{text_preview[..text_preview_length]}..." if text_preview.length > text_preview_length
+      super "#{pos}: Couldn't match any tokens with string \"#{text_preview}\"#{mode == :default ? '' : " in mode `#{mode}'"}."
+    end
+  end
+
   class Lexer
-    attr_reader :tokens
+    attr_reader :tokens, :conflict_mode
+
+    CONFLICT_MODES = [:longest, :first]
 
     def initialize
       @tokens = {}
+      @conflict_mode = CONFLICT_MODES.first
     end
 
-    def token(name, match, *flags, &block)
-      return if match.to_s.empty? || @tokens.include?(name)
+    def token(name, match, skip: false, more: false, insensitive: false, mode: :default, &block)
+      raise Error, "EOF is a reserved token name" if name == :EOF
+      raise Error, "token name `#{name}' is taken" if @tokens.include?(name)
+      raise Error, "cannot declare token with empty match" if match.to_s.empty?
+
+      match = Array(match).map { |m| m.is_a?(Regexp) ? Regexp.new(m.source, Regexp::IGNORECASE) : m } if insensitive
 
       block_closure = block.nil? ? nil : proc { |x| instance_exec(x, &block) }
-      @tokens[name] = { match: match, flags: convert_flags(name, flags), block: block_closure }
-    end
-
-    def ignore(match, *flags)
-      return if match.to_s.empty?
-
-      i = 0
-      name = "ignore#{i += 1}".to_sym while name.nil? || @tokens.include?(name)
-
-      flags = convert_flags(name, flags)
-      flags[:ignore] = true
-      @tokens[name] = { match: match, flags: flags, block: nil }
+      @tokens[name] = { match: match, skip: skip, more: more, insensitive: insensitive, mode: mode, block: block_closure }
     end
 
     def delete_token(name)
       @tokens.delete(name)
     end
 
-    def start(text)
+    def conflict_mode=(method)
+      method = method.to_s.downcase.to_sym
+      raise Error, "invalid conflict mode `#{method}'. Options: #{CONFLICT_MODES.join(', ')}" unless CONFLICT_MODES.include?(method)
+
+      @conflict_mode = method
+    end
+
+    def tokenize(text, debug: false)
       @text = text
       @position = 0
-    end
+      @mode = [:default]
 
-    def lineno
-      @text[..@position].count("\n") + 1
-    end
+      tokens = []
+      more = nil
+      if debug
+        puts "line \# column length match"
+        puts "====== ====== ====== ====================="
+      end
 
-    def next
-      matches = get_matches(@position)
-      raise StandardError, "Couldn't match any tokens with string '#{@text[@position..].length > 10 ? @text[@position..@position+10] + '...' : @text[@position..]}'" if matches.empty?
+      while @position < @text.length
+        matches = get_matches(@position)
+        raise LexerError.new(@position, @text, @mode.last) if matches.empty?
 
-      matches.sort { |a,b| b.value.length <=> a.value.length }
-    end
+        matches = matches.sort { |a,b| b.value.length <=> a.value.length } if @conflict_mode == :longest
+        t = matches.first
 
-    def accept(token)
-      @position = token.position + token.value.length
-      token.value = @tokens[token.name][:block].call(token.value) unless @tokens[token.name][:block].nil?
+        if debug
+          pos = TextPosition.new(@position, @text)
+          print pos.line.to_s.ljust(6)
+          print " "
+          print pos.column.to_s.ljust(6)
+          print " "
+          print t.value.length.to_s.ljust(6)
+          print " "
+          puts "#{t.name} : \"#{t.value.dump[1..-2]}\""
+        end
+
+        @position = t.position.offset + t.value.length
+
+        t.value = "" if @tokens[t.name][:skip]
+        t.value = "#{more}#{t.value}"
+        unless @tokens[t.name][:block].nil?
+          new_value = @tokens[t.name][:block].call(t.value)
+          t.value = new_value unless new_value.nil?
+        end
+        more = @tokens[t.name][:more] ? t.value.to_s : nil
+
+        tokens << t unless (@tokens[t.name][:skip] && t.value.to_s.empty?) || @tokens[t.name][:more]
+      end
+
+      tokens << Token.new(:EOF, :EOF, TextPosition.new(@text.length, @text))
+      tokens
     end
 
     private
 
-    def get_matches(pos)
-      return [Token.new(:EOF, :EOF, @text.length)] if pos == @text.length
+    def push_mode(mode)
+      @mode << mode
+      nil
+    end
 
-      matches = @tokens.map do |name, data|
+    def pop_mode
+      return nil if @mode.length == 1
+
+      @mode.pop
+      nil
+    end
+
+    def mode(mode)
+      @mode[-1] = mode
+      nil
+    end
+
+    def get_matches(pos)
+      matches = []
+      @tokens.each do |name, data|
+        next unless data[:mode] == @mode.last
+
         s = nil
         Array(data[:match]).each do |m|
           m = @text[pos..].match(m) if m.is_a?(Regexp)
-          if (data[:flags][:insensitive] && @text[pos..pos + m.to_s.length - 1].downcase == m.to_s.downcase) ||
-              (!data[:flags][:insensitive] && @text[pos..pos + m.to_s.length - 1] == m.to_s)
+          next if m.to_s.empty?
+
+          if (data[:insensitive] && @text[pos..pos + m.to_s.length - 1].downcase == m.to_s.downcase) ||
+              (!data[:insensitive] && @text[pos..pos + m.to_s.length - 1] == m.to_s)
             s = @text[pos..pos + m.to_s.length - 1]
             break
           end
         end
 
-        s.to_s.empty? ? nil : (data[:flags][:ignore] ? get_matches(pos + s.length) : Token.new(name, s, pos))
-      end.flatten
-      matches.delete(nil)
-      matches
-    end
-
-    def convert_flags(name, flags)
-      _flags = { insensitive: false, ignore: false }
-
-      flags.each do |flag|
-        case flag
-        when :i, :insensitive then _flags[:insensitive] = true
-        when :s, :sensitive then _flags[:insensitive] = false
-        when :ignore then _flags[:ignore] = true
-        else raise StandardError, "Invalid flag '#{flag}' in token '#{name}'"
-        end
+        matches << Token.new(name, s, TextPosition.new(pos, @text)) unless s.nil?
       end
 
-      _flags
+      matches
     end
   end
 end

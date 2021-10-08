@@ -4,24 +4,31 @@ require_relative 'nonterminal'
 
 module Lalrrb
   class Terminal < Nonterminal
-    attr_reader :match, :name
+    attr_accessor :name, :match
 
     def initialize(match, name: nil)
-      super(name.nil? ? :terminal : :token)
+      super(:terminal)
       @name = name
       @match = match
     end
 
     def to_s
       return @name.to_s unless @name.nil?
-      return "/#{@match.source}/" if @match.is_a?(Regexp)
 
-      "\"#{@match.to_s.gsub("\\", "\\\\\\").gsub("\"", "\\\"")}\""
+      strs = Array(@match).map { |m| m.is_a?(Regexp) ? "/#{m.source}/" : m.to_s.dump }
+      strs.length > 1 ? "(#{strs.join(' | ')})" : strs.first
     end
 
     def to_h
-      return { type: @type, match: @match } if @name.nil?
       { type: @type, name: @name, match: @match }
+    end
+
+    def to_regex
+      alts = Array(match).map do |m|
+        m.is_a?(Regexp) ? m : Regexp.new(Regexp.escape(m.to_s))
+      end
+
+      alts.length > 1 ? Regexp.new("(#{alts.map(&:source).join('|')})") : alts.first
     end
 
     def to_svg

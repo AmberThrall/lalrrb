@@ -114,10 +114,11 @@ module Lalrrb
         case term
         when ParseTree then matches << nodes.include?(term) ? term : nil
         when Integer then matches << @children[term]
-        when String, Symbol
+        when String
           matches.concat(nodes.filter do |c|
-            c == term || c.name == term || (c.token? && c.value == term) || c.data == term
+            c == term || c.name == term || c.value == term || c.data == term
           end)
+        when Symbol then matches.concat(nodes.filter { |c| c == term || c.name == term })
         when Range then matches.concat Range.to_a.map { |s| search(s, recursive: false, include_self: include_self) }
         end
       end
@@ -171,6 +172,17 @@ module Lalrrb
 
     def token?
       @data.is_a?(Token)
+    end
+
+    def position
+      return @data.position if @data.is_a?(Token)
+
+      @children.each do |c|
+        p = c.position
+        return p unless p.nil?
+      end
+
+      nil
     end
 
     def name
